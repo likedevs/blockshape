@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "devDependencies": {
+    "gulp": "^3.9.0",
+    "laravel-elixir": "^2.0.0"
+  },
+  "dependencies": {
+    "fake-git-history": "^1.7.0"
+  }
+}

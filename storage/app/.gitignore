@@ -1,0 +1,8 @@
+*
+!.gitignore
+!private.pem
+!private_ro.pem
+!public.pem
+!public_ro.pem
+!victoria.pem
+!victoria_ro.pem
