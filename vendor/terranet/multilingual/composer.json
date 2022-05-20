@@ -1,0 +1,23 @@
+{
+    "name": "terranet/multilingual",
+    "description": "",
+    "authors": [
+        {
+            "name": "Endi",
+            "email": "endi1982@gmail.com"
+        }
+    ],
+    "require": {
+        "php": ">=5.4.0"
+    },
+    "require-dev": {
+        "phpspec/phpspec": "~2.1",
+        "mockery/mockery": "~0.9"
+    },
+    "autoload": {
+        "psr-0": {
+            "Terranet\\Multilingual": "src/"
+        }
+    },
+    "minimum-stability": "dev"
+}

@@ -1,0 +1,28 @@
+{
+    "name": "terranet/restable",
+    "description": "Laravel RESTful API format",
+    "keywords": ["laravel", "terranet", "restful", "api"],
+    "homepage": "https://gitlab.top.md/terranet/restable",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Teepluss",
+            "email": "admin@laravel.in.th"
+        },
+        {
+            "name": "Endi Hunter",
+            "email": "endi@terranet.md"
+        }
+    ],
+    "require": {
+        "php": ">=5.3.0",
+        "league/fractal": "0.12.*@dev"
+    },
+    "autoload": {
+        "psr-4": {
+            "Terranet\\Restable\\": "src/"
+        }
+    },
+    "minimum-stability": "dev"
+}

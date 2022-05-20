@@ -1,0 +1,21 @@
+{
+    "name": "terranet/rankable",
+    "description": "Provides useful methods to make an eloquent collection rankable",
+    "keywords": ["laravel", "rankable", "eloquent"],
+    "authors": [
+        {
+            "name": "Endi Hunter",
+            "email": "endi@terranet.md"
+        }
+    ],
+    "require": {
+        "php": ">=5.4.0",
+        "illuminate/database": "~5.0"
+    },
+    "autoload": {
+        "psr-0": {
+            "Terranet\\Rankable": "src/"
+        }
+    },
+    "minimum-stability": "stable"
+}

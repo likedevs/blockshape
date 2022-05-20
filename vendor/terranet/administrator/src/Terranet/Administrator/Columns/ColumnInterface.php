@@ -1,0 +1,12 @@
+<?php namespace Terranet\Administrator\Columns;
+
+interface ColumnInterface
+{
+    public function getName();
+
+    public function getTitle();
+
+    public function getValue($scaffoldRow);
+
+    public function getFormatted($scaffoldRow);
+}
