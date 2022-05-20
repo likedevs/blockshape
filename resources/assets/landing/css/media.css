@@ -1,0 +1,163 @@
+/*==========  Desktop First Method  ==========*/
+
+/* Large Devices, Wide Screens */
+@media only screen and (max-width : 1200px) {
+  .wrap_1200 {
+	width: 95%;
+  }
+
+  .top_imgPub {
+	max-width: 947px;
+	margin: 40px auto 10px;
+  }
+}
+/* Medium Devices, Desktops */
+@media only screen and (max-width : 992px) {
+  .wrap_947{
+	width: 100%;
+  }
+  .top_imgPub li {
+	float: none;
+	width: 100%;
+  }
+  .pubImg{
+	width: 300px;
+	margin: auto;
+  }
+  .stepCircle li{
+	float: none;
+	width: 100%;
+	height: 350px;
+  }
+  .stepCircle li .dot{
+	margin: auto;
+	float: none;
+  }
+  .arrow{
+	background-image: url(../img/down_arrow.png);
+	background-repeat: no-repeat;
+	background-position: center;
+	height: 100px;
+	position: absolute;
+	top: 110%;
+	right: 30%;
+  }
+  .tabel{
+	width: 100%;
+  	margin: auto;
+  }
+  .cont_tbl{
+	width: 700px;
+	margin: auto;
+  }
+  .contactLink li {
+	width: 100%;
+	float: none;
+  }
+  .contactLink .links{
+	margin-bottom: 20px;
+  }
+  .contactLink .links li{
+	float: left;
+  }
+  .contactLink .links li div{
+	display: block;
+	margin: auto;
+	width: 145px;
+  }
+  .contactLink p{
+	float: none;
+	margin: auto;
+  }
+}
+
+/* Small Devices, Tablets */
+@media only screen and (max-width : 768px) {
+  .middleTitle {
+	width: 90%;
+	height: 100%;
+  }
+  .cont_tbl{
+	width: 460px;
+  }
+  .priceBtn li {
+	width: 100%;
+	float: none;
+	display: block;
+	margin: auto;
+	margin-bottom: 20px;
+  }
+  .priceBtn li:first-child .btnPay {
+	float: none;
+	margin: auto;
+  }
+  .priceBtn li:last-child .btnPay {
+	float: none;
+	margin: auto;
+  }
+
+  .contactLink li {
+	width: 100%;
+	float: none;
+  }
+  .contactLink .links{
+	margin-bottom: 20px;
+  }
+  .contactLink .links li{
+	float: left;
+	width: 33.33%;
+  }
+  .contactLink .links li div{
+	display: block;
+	margin: auto;
+	width: 165px;
+	float: none;
+  }
+}
+/* Extra Small Devices, Phones */
+@media only screen and (max-width : 480px) {
+  .cont_tbl{
+	width: 250px;
+  }
+  .contactLink .links li{
+	float: none;
+	width: 100%;
+	margin-bottom: 10px;
+  }
+	.celula.contacts {
+		width: 224px!important;
+	}
+}
+
+/* Custom, iPhone Retina */
+@media only screen and (max-width : 320px) {
+
+}
+
+
+/*==========  Mobile First Method  ==========*/
+
+/* Custom, iPhone Retina */
+@media only screen and (min-width : 320px) {
+
+}
+
+/* Extra Small Devices, Phones */
+@media only screen and (min-width : 480px) {
+
+}
+
+/* Small Devices, Tablets */
+@media only screen and (min-width : 768px) {
+
+}
+
+/* Medium Devices, Desktops */
+@media only screen and (min-width : 992px) {
+
+}
+
+ /* Large Devices, Wide Screens */
+@media only screen and (min-width : 1200px) {
+
+}

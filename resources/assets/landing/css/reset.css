@@ -1,0 +1,108 @@
+*
+{
+	margin: 0;
+	padding: 0;
+  	box-sizing: border-box;
+}
+body
+{
+	background: #f7f4f3;
+	font-family: "Lato-Bold", "Lato-Light", "Lato-Regular", Arial, "Lucida Grande", sans-serif;
+	font-size: 0.9em;
+	/*min-width: 1200px;*/
+	color: #FFF;
+}
+ul
+{
+	list-style: none;
+}
+a
+{
+	text-decoration: none;
+	color: #006EC8;
+}
+a img
+{
+	border: none;
+}
+table
+{
+	border-collapse: collapse;
+}
+.clear:after
+{
+	content: ".";
+	display: block;
+	height: 0;
+	font-size: 0;
+	clear: both;
+	visibility: hidden;
+}
+.clearfix::after {
+	clear: both;
+	display: block;
+	content: " ";
+	height: 0px;
+	visibility: hidden;
+}
+.clear
+{
+	min-height: 1px;
+}
+.fl_left
+{
+	float: left
+}
+.fl_right
+{
+	float: right
+}
+.f_red
+{
+	color: #da1d52
+}
+
+.f_grey
+{
+	color: #8d9291;
+}
+.f_black
+{
+	color: #000;
+}
+.ta_cent
+{
+	text-align: center;
+}
+.ta_right
+{
+	text-align: right;
+}
+.disp_none
+{
+	display: none;
+}
+.marg_tb
+{
+	margin: 1.6em 0 !important;
+}
+.no_pad
+{
+	padding: 0 !important;
+}
+.no_marg
+{
+	margin: 0 !important;
+}
+input,
+select,
+textarea
+{
+	font-size: 0.9em;
+	line-height: 1.53em;
+}
+.brd_none,
+.brd_none td
+{
+	border: none !important;
+}

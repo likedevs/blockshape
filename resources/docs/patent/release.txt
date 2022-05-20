@@ -1,0 +1,1699 @@
+app/BMICalculator/AbstractCalculator.php
+============================================================
+<?php namespace App\BMICalculator;
+
+abstract class AbstractCalculator
+{
+    protected function normalizeHeight($height)
+    {
+        if ($height > 100) {
+            $height /= 100;
+        }
+
+        return $height;
+    }
+}
+============================================================
+
+
+app/BMICalculator/BMIValue.php
+============================================================
+<?php namespace App\BMICalculator;
+
+class BMIValue
+{
+    protected $value;
+
+    public function __construct($value)
+    {
+        $this->value = round($value, 1);
+    }
+
+    public function getValue()
+    {
+        return $this->value;
+    }
+
+    public function resolve()
+    {
+        return (new EloquentProvider)->find($this);
+    }
+}
+============================================================
+
+
+app/BMICalculator/Contracts/BMICalculator.php
+============================================================
+<?php namespace App\BMICalculator\Contracts;
+
+interface BMICalculator
+{
+    const BMI_UNDERWEIGHT        = 'underweight';
+    const BMI_OVERWEIGHT         = 'overweight';
+    const BMI_HEAVILY_OVERWEIGHT = 'heavily_overweight';
+    const BMI_NORMAL             = 'normal';
+
+    public function calculate($height, $weight);
+}
+============================================================
+
+
+app/BMICalculator/EloquentProvider.php
+============================================================
+<?php namespace App\BMICalculator;
+
+use App\Imc;
+
+class EloquentProvider
+{
+    public function find(BMIValue $bmiValue)
+    {
+        return Imc::where('value_min', '<=', $value = $bmiValue->getValue())->where('value_max', '>=', $value)->first();
+    }
+}
+============================================================
+
+
+app/BMICalculator/FemaleCalculator.php
+============================================================
+<?php namespace App\BMICalculator;
+
+use App\BMICalculator\Contracts\BMICalculator AS CalculatorContract;
+
+class FemaleCalculator extends AbstractCalculator implements CalculatorContract
+{
+    public function calculate($height, $weight)
+    {
+        $height = $this->normalizeHeight($height);
+
+        return new BMIValue($weight / pow($height, 2));
+    }
+}
+============================================================
+
+
+app/BMICalculator/ValueByAge.php
+============================================================
+<?php namespace App\BMICalculator;
+
+class ValueByAge
+{
+    public static function get($age)
+    {
+        $reference = [
+            '15-20' => 18,
+            '21-25' => 18.5,
+            '26-30' => 19,
+            '31-35' => 19.5,
+            '36-40' => 20,
+            '41-45' => 21,
+            '46-50' => 22,
+            '51-60' => 23
+        ];
+
+        foreach ($reference as $ages => $imc) {
+            list($min, $max) = explode('-', $ages);
+            if ($age >= $min && $age <= $max) {
+                return $imc;
+            }
+        }
+
+        return 21.75;
+    }
+}
+============================================================
+
+
+app/Nutrition/Load/AbstractDriver.php
+============================================================
+<?php namespace App\Nutrition\Load;
+
+abstract class AbstractDriver
+{
+    protected $hourMin;
+
+    protected $hourMax;
+
+    protected $eatingsNumber;
+
+    protected $rules = [];
+
+    protected $schedule = [];
+
+    protected $shifts;
+
+    protected $time;
+
+    protected $ruleIndex;
+
+    protected $shiftNutrient = [];
+
+    protected $startIndex;
+
+    protected $movingLeftStopped;
+
+    protected $movingRightStopped;
+
+    protected $iteration = 1;
+
+    public function __construct()
+    {
+        $this->shifts = array_keys($this->rules);
+
+        $this->startIndex = array_search(0, $this->shifts);
+    }
+
+    public function schedule($time)
+    {
+        $this->time = time_to_mins($time);
+
+        while (true) {
+            $shiftedLeft = $shiftedRight = 0;
+
+            if (! $this->movingLeftStopped) {
+                if (($this->ruleIndex = $this->canShiftLeft()) !== false && ! ($shiftedLeft = $this->fillSchedule())) {
+                    $this->movingLeftStopped = $this->startIndex - $this->iteration;
+                }
+            }
+
+            if ($this->scheduleFilled()) {
+                break;
+            }
+
+            if (! $this->movingRightStopped) {
+                if (($this->ruleIndex = $this->canShiftRight()) !== false && ! ($shiftedRight = $this->fillSchedule())) {
+                    $this->movingRightStopped = $this->startIndex + $this->iteration;
+                }
+            }
+
+            if ($this->scheduleFilled()) {
+                break;
+            }
+
+            if (! ($shiftedLeft || $shiftedRight)) {
+                break;
+            }
+
+            $this->nextIteration();
+        }
+
+        if (! $this->scheduleFilled()) {
+            $this->orderScheduleByTime();
+            $this->addMissingHours();
+        }
+
+        $this->schedule[$this->time] = $this->extractNutrient(0);
+
+        $this->orderScheduleByTime();
+
+        return $this->keysToTime();
+    }
+
+    private function canShiftLeft()
+    {
+        $nextIndex = $this->startIndex - $this->iteration;
+
+        return $nextIndex >= 0 ? $nextIndex : false;
+    }
+
+    private function canShiftRight()
+    {
+        return ($nextIndex = $this->startIndex + $this->iteration) < count($this->shifts) ? $nextIndex : false;
+    }
+
+    protected function fillSchedule()
+    {
+        $shiftHours = $this->shift();
+
+        $minutes = $this->getShiftedTime($shiftHours);
+
+        $hour = $this->hour($minutes);
+
+        if ($this->eatableTime($hour) || (abs($hour - $this->hourMin) == 1 || abs($hour - $this->hourMax) == 1)) {
+            if ($minutes > (($this->hourMax + 1) 
+                $minutes -= 30;
+            } else if ($minutes <= ($this->hourMin - 1) 
+                $minutes += 30;
+            }
+
+            $this->schedule[$minutes] = $nutrient = $this->extractNutrient($shiftHours);
+            $this->shiftNutrient[$shiftHours] = substr($nutrient, strpos($nutrient, ':') + 1);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    protected function shift($byIndex = null)
+    {
+        if (! $byIndex)
+            $byIndex = $this->ruleIndex;
+
+        return $this->shifts[$byIndex];
+    }
+
+    protected function getShiftedTime($hoursShift)
+    {
+        $minutes = $this->time + $hoursShift 
+
+        if ($this->positiveShift($hoursShift)) {
+            $minutes += 60;
+        }
+
+        return $minutes;
+    }
+
+    protected function positiveShift($hoursShift)
+    {
+        return $hoursShift > 0;
+    }
+
+    protected function hour($minutes)
+    {
+        return floor($minutes / 60);
+    }
+
+    protected function eatableTime($hour)
+    {
+        return ((int) $hour >= $this->hourMin && (int) $hour <= $this->hourMax);
+    }
+
+    protected function extractNutrient($shiftHours)
+    {
+        if (is_string($this->rules[$shiftHours])) {
+            return $this->rules[$shiftHours];
+        } else {
+            $options = $this->rules[$shiftHours];
+            $type = $options['type'];
+            $nutrients = $options['nutrients'];
+
+            if (count($this->shiftNutrient) && count($nutrients) > 1) {
+                $nutrientCounts = array_count_values($this->shiftNutrient);
+                arsort($nutrientCounts);
+                $exclude = array_keys($nutrientCounts)[0];
+
+                $nutrients = array_filter($nutrients, function ($nutrient) use ($exclude) {
+                    return $nutrient != $exclude;
+                });
+
+                if (in_array('vegetables-carbohydrates', $nutrients) && 1 == count($nutrients)) {
+                    $nutrients[] = $exclude;
+                }
+            }
+
+            if (method_exists($this, 'fixNutrients') && $response = $this->fixNutrients($shiftHours, $type)) {
+                list($type, $nutrients) = $response;
+            }
+
+            shuffle($nutrients);
+            $nutrient = $type . ":" . $nutrients[0];
+        }
+
+        return $nutrient;
+    }
+
+    private function scheduleFilled()
+    {
+        return count($this->schedule) == ($this->eatingsNumber);
+    }
+
+    protected function nextIteration()
+    {
+        $this->iteration++;
+    }
+
+    protected function orderScheduleByTime()
+    {
+        ksort($this->schedule);
+    }
+
+    private function addMissingHours()
+    {
+        $scheduleHours = array_keys($this->schedule);
+
+        $shiftLeft = $this->startIndex - $this->movingLeftStopped;
+        $shiftRight = $this->movingRightStopped - $this->startIndex;
+
+        if (! $this->scheduleFilled() && $shiftLeft < $shiftRight && ($firstEatingTime = array_shift($scheduleHours))) {
+            $expectedShift = abs($this->shift($this->movingLeftStopped + 1) - $this->shift($this->movingLeftStopped));
+            $allowShift = ceil(max($expectedShift - 2, 1) / 2);
+            if ($allowShift <= 1) {
+                $missingTime = $this->hourMin 
+                $this->schedule[$missingTime] = $this->extractNutrient($this->shift($this->movingLeftStopped));
+            }
+        }
+
+        if (! $this->scheduleFilled() && $shiftRight < $shiftLeft && ($lastEatingTime = array_pop($scheduleHours))) {
+            $expectedShift = abs($this->shift($this->movingRightStopped + 1) - $this->shift($this->movingRightStopped));
+            $allowShift = ceil(max($expectedShift - 2, 1) / 2);
+            if ($allowShift <= 1) {
+                $missingTime = $this->hourMax 
+                $this->schedule[$missingTime] = $this->extractNutrient($this->shift($this->movingRightStopped));
+            }
+        }
+    }
+
+    private function keysToTime()
+    {
+        $vals = array_values($this->schedule);
+        $keys = array_keys($this->schedule);
+        $keys = array_map(function ($key) {
+            return mins_to_time($key);
+        }, $keys);
+
+        return array_combine($keys, $vals);
+    }
+
+    protected function zeroPaddify($hours, $mins)
+    {
+        $hours = str_pad($hours, 2, '0', STR_PAD_LEFT);
+        $mins = str_pad($mins, 2, '0', STR_PAD_LEFT);
+
+        return [$hours, $mins];
+    }
+}
+============================================================
+
+
+app/Nutrition/Load/Maintenance.php
+============================================================
+<?php namespace App\Nutrition\Load;
+
+class Maintenance extends WeightLoss
+{
+    protected $hourMin = 7;
+
+    protected $hourMax = 19;
+}
+============================================================
+
+
+app/Nutrition/Load/WeightGain.php
+============================================================
+<?php namespace App\Nutrition\Load;
+
+class WeightGain extends AbstractDriver
+{
+    protected $hourMin = 7;
+
+    protected $hourMax = 20;
+
+    protected $eatingsNumber = 7;
+
+    protected $rules = [
+        -14 => [
+            'type' => 'main',
+            'nutrients' => ['carbohydrates']
+        ],
+        -12 => [
+            'type' => 'snack',
+            'nutrients' => ['carbohydrates', 'proteins']
+        ],
+        -10 => [
+            'type' => 'main',
+            'nutrients' => ['carbohydrates']
+        ],
+        -8 => [
+            'type' => 'snack',
+            'nutrients' => ['carbohydrates', 'proteins']
+        ],
+        -6 => [
+            'type' => 'main',
+            'nutrients' => ['carbohydrates']
+        ],
+        -4 => [
+            'type' => 'snack',
+            'nutrients' => ['carbohydrates', 'proteins']
+        ],
+        -2 => [
+            'type' => 'main',
+            'nutrients' => ['carbohydrates']
+        ],
+        0 => 'water',
+        2 => [
+            'type' => 'main',
+            'nutrients' => ['proteins-carbohydrates']
+        ],
+        4 => [
+            'type' => 'snack',
+            'nutrients' => ['carbohydrates', 'proteins']
+        ],
+        6 => [
+            'type' => 'main',
+            'nutrients' => ['carbohydrates']
+        ],
+        8 => [
+            'type' => 'snack',
+            'nutrients' => ['carbohydrates', 'proteins']
+        ],
+        10 => [
+            'type' => 'main',
+            'nutrients' => ['carbohydrates']
+        ],
+        12 => [
+            'type' => 'snack',
+            'nutrients' => ['carbohydrates', 'proteins']
+        ],
+        14 => [
+            'type' => 'main',
+            'nutrients' => ['carbohydrates']
+        ]
+    ];
+
+    protected function fixNutrients($shiftHours, $type)
+    {
+        if ($this->positiveShift($shiftHours) && 'main' == $type) {
+            $hour = $this->hour($this->time);
+
+            if (($hour + $shiftHours + 1) >= $this->hourMax) {
+                if ($nextShift = $this->shifts[array_search($shiftHours, $this->shifts) + 1]) {
+                    $type = 'snack';
+                    $nutrients = $this->rules[$nextShift]['nutrients'];
+
+                    return [$type, $nutrients];
+                }
+            }
+        }
+
+        return null;
+    }
+}
+============================================================
+
+
+app/Nutrition/Load/WeightLoss.php
+============================================================
+<?php namespace App\Nutrition\Load;
+
+class WeightLoss extends AbstractDriver
+{
+    protected $hourMin = 7;
+
+    protected $hourMax = 18;
+
+    protected $eatingsNumber = 5;
+
+    protected $rules = [
+        -11 => [
+            'type'      => 'main',
+            'nutrients' => ['proteins-carbohydrates', 'carbohydrates']
+        ],
+        -9  => [
+            'type'      => 'snack',
+            'nutrients' => ['proteins']
+        ],
+        -7  => [
+            'type'      => 'main',
+            'nutrients' => ['proteins-carbohydrates', 'carbohydrates']
+        ],
+        -5  => [
+            'type'      => 'snack',
+            'nutrients' => ['carbohydrates', 'proteins']
+        ],
+        -2  => [
+            'type'      => 'main',
+            'nutrients' => ['carbohydrates']
+        ],
+        0   => 'water',
+        2   => [
+            'type'      => 'main',
+            'nutrients' => ['carbohydrates']
+        ],
+        5   => [
+            'type'      => 'snack',
+            'nutrients' => ['carbohydrates', 'proteins']
+        ],
+        7   => [
+            'type'      => 'main',
+            'nutrients' => ['proteins-carbohydrates', 'carbohydrates']
+        ],
+        9   => [
+            'type'      => 'snack',
+            'nutrients' => ['proteins']
+        ],
+        11  => [
+            'type'      => 'main',
+            'nutrients' => ['proteins-carbohydrates', 'carbohydrates']
+        ]
+    ];
+}
+============================================================
+
+
+app/Nutrition/Rest/AbstractDriver.php
+============================================================
+<?php namespace App\Nutrition\Rest;
+
+abstract class AbstractDriver
+{
+    protected $rules;
+
+    public function schedule()
+    {
+        $schedule = [];
+
+        foreach ($this->rules as $time => $nutrients) {
+            $schedule[$time] = $this->extractNutrient($time);
+        }
+
+        return $schedule;
+    }
+
+    protected function extractNutrient($shiftHours)
+    {
+        list($type, $nutrients) = explode(':', $this->rules[$shiftHours]);
+        $options = explode('|', $nutrients);
+        $nutrient = $options[array_rand($options)];
+
+        return "{$type}:{$nutrient}";
+    }
+}
+============================================================
+
+
+app/Nutrition/Rest/WeightGain.php
+============================================================
+<?php namespace App\Nutrition\Rest;
+
+class WeightGain extends AbstractDriver
+{
+    protected $rules = [
+        '07:00' => 'main:proteins-carbohydrates|carbohydrates',
+        '11:00' => 'snack:carbohydrates',
+        '14:00' => 'main:proteins-carbohydrates',
+        '16:00' => 'snack:carbohydrates|proteins',
+        '18:00' => 'main:carbohydrates|proteins-carbohydrates'
+    ];
+}
+============================================================
+
+
+app/Nutrition/Rest/WeightLoss.php
+============================================================
+<?php namespace App\Nutrition\Rest;
+
+class WeightLoss extends AbstractDriver
+{
+    protected $rules = [
+        '07:00' => 'main:proteins-carbohydrates|carbohydrates',
+        '11:00' => 'snack:carbohydrates',
+        '14:00' => 'main:proteins-carbohydrates',
+        '16:00' => 'snack:carbohydrates|proteins',
+        '18:00' => 'main:carbohydrates|proteins-carbohydrates'
+    ];
+}
+============================================================
+
+app/Recipe/Params.php
+============================================================
+<?php namespace App\Recipe;
+
+class Params
+{
+    const PLACEMENT_BEFORE = 'before';
+
+    const PLACEMENT_AFTER = 'after';
+
+    protected $nutrient;
+
+    protected $forTarget = null;
+
+    protected $snack = false;
+
+    protected $eatingNum = null;
+
+    protected $placement = null;
+
+    protected $diseases = [];
+
+    protected $allergies = [];
+
+    protected $foodExcludes = [];
+
+    protected $disabled = [];
+
+    public function getNutrient()
+    {
+        return $this->nutrient;
+    }
+
+    public function setNutrient($nutrient)
+    {
+        $this->nutrient = $nutrient;
+
+        return $this;
+    }
+
+    public function isSnack()
+    {
+        return $this->snack;
+    }
+
+    public function setSnack($snack)
+    {
+        $this->snack = (bool) $snack;
+
+        return $this;
+    }
+
+    public function getEatingNum()
+    {
+        return $this->eatingNum;
+    }
+
+    public function setEatingNum($eatingNum)
+    {
+        $this->eatingNum = (int) $eatingNum;
+
+        return $this;
+    }
+
+    public function getPlacement()
+    {
+        return $this->placement;
+    }
+
+    public function setPlacement($placement)
+    {
+        if (null != $placement && ! in_array($placement, [static::PLACEMENT_BEFORE, static::PLACEMENT_AFTER])) {
+            throw new \Exception("Invalid placement");
+        }
+
+        $this->placement = $placement;
+
+        return $this;
+    }
+
+    public function getDiseases()
+    {
+        return $this->diseases;
+    }
+
+    public function setDiseases(array $diseases = [])
+    {
+        $this->diseases = $diseases;
+
+        return $this;
+    }
+
+    public function getAllergies()
+    {
+        return $this->allergies;
+    }
+
+    public function setAllergies(array $allergies = [])
+    {
+        $this->allergies = $allergies;
+
+        return $this;
+    }
+
+    public function getFoodExcludes()
+    {
+        return $this->foodExcludes;
+    }
+
+    public function setFoodExcludes(array $foodExcludes = [])
+    {
+        $this->foodExcludes = $foodExcludes;
+
+        return $this;
+    }
+
+    public function getDisabled()
+    {
+        return $this->disabled;
+    }
+
+    public function setDisabled(array $disabled = [])
+    {
+        $this->disabled = $disabled;
+
+        return $this;
+    }
+
+    public function debug()
+    {
+        $params = [];
+
+        $reflection = new \ReflectionClass($this);
+
+        foreach ($reflection->getProperties() as $property) {
+            $name = $property->name;
+            $value = $this->$name;
+
+            if (is_array($value)) {
+                $value = "[" . (empty($value) ? "" : join(", ", $value)) . "]";
+            }
+
+            $params[] = "{$name}: {$value}";
+        }
+
+        return join(" | ", $params);
+    }
+
+    public function forTarget()
+    {
+        return $this->forTarget;
+    }
+
+    public function setForTarget($forTarget)
+    {
+        $this->forTarget = $forTarget;
+
+        return $this;
+    }
+}
+============================================================
+
+
+app/Services/BasalMetabolism.php
+============================================================
+<?php namespace App\Services;
+
+class BasalMetabolism
+{
+    public function calculate($weight, $height, $age)
+    {
+        return (int) round(655 + (9.56 
+    }
+
+    private function toMeters($height)
+    {
+        return round(($height / 100), 2);
+    }
+}
+============================================================
+
+
+app/Services/CardioReactionDetector.php
+============================================================
+<?php namespace App\Services;
+
+use App\Services\Contracts\CardioReactionDetector as DetectorContract;
+use App\Services\Responses\CardioReaction;
+
+class CardioReactionDetector implements DetectorContract
+{
+    public function detect($before, $after = null)
+    {
+        if ($before >= 140) {
+            return new CardioReaction(self::R_HIPERTONIE . '-' . self::R_ATTENTION);
+        } else {
+            $this->validateArguments($before, $after);
+
+            $before = $this->detectBeforeValue($before);
+
+            $after = $this->detectAfterValue($after);
+
+            return new CardioReaction($before . '-' . $after);
+        }
+    }
+
+    protected function detectBeforeValue($before)
+    {
+        if ($before < 110) {
+            return self::R_HIPOTONIE;
+        }
+
+        return self::R_NORMOTONIE;
+    }
+
+    protected function detectAfterValue($after)
+    {
+        if ($after <= 130) {
+            return self::R_NORMOTONIE;
+        }
+
+        return self::R_HIPERTONIE;
+    }
+
+    protected function validateArguments($before, $after)
+    {
+        if (! ($before && $after)) {
+            throw new \Exception('Missing before or after load pressure');
+        }
+    }
+}
+============================================================
+
+
+app/Services/Contracts/CardioReactionDetector.php
+============================================================
+<?php namespace App\Services\Contracts;
+
+interface CardioReactionDetector
+{
+    const R_NORMOTONIE = 'normotonie';
+    const R_HIPOTONIE = 'hipotonie';
+    const R_HIPERTONIE = 'hipertonie';
+    const R_ATTENTION = 'attention';
+
+    public function detect($systolic, $diastolic);
+}
+============================================================
+
+
+app/Services/FigureType.php
+============================================================
+<?php namespace App\Services;
+
+class FigureType
+{
+    const TYPE_CLEPSIDRA = 'clepsidra';
+
+    const TYPE_PEAR = 'pear';
+
+    const TYPE_APPLE = 'apple';
+
+    public function detect($buttocks, $shoulders)
+    {
+        if ($buttocks - $shoulders >= 6) {
+            return static::TYPE_PEAR;
+        }
+
+        if ($shoulders - $buttocks >= 6) {
+            return static::TYPE_APPLE;
+        }
+
+        return static::TYPE_CLEPSIDRA;
+    }
+}
+============================================================
+
+
+app/Services/HtmlBuilder.php
+============================================================
+<?php namespace App\Services;
+
+use App\Week\Manager;
+use App\User;
+use App\UserHistory;
+use BMICalculator;
+use App\Traits\DocumentBuilder;
+use App\Services\Contracts\HtmlBuilder as DocumentBuilderContract;
+
+class HtmlBuilder implements DocumentBuilderContract
+{
+    protected $metabolismCalculator;
+
+    protected $weekManager;
+
+    private $hintsRepository;
+
+    private $nutrientsRepository;
+
+    private $exercisesRepository;
+
+    private $suggestionsRepository;
+
+    public function __construct(
+        QuizHintsRepository $hintsRepository,
+        NutrientsRepository $nutrientsRepository,
+        ExercisesRepository $exercisesRepository,
+        SuggestionsRepository $suggestionsRepository
+    ) {
+        $this->hintsRepository = $hintsRepository;
+        $this->nutrientsRepository = $nutrientsRepository;
+        $this->exercisesRepository = $exercisesRepository;
+        $this->suggestionsRepository = $suggestionsRepository;
+    }
+
+    public function build(User $user, UserHistory $record)
+    {
+        $maxWeight = $this->recommendedWeight($user, $record);
+
+        list($estimatedTime, $estimatedTimeMax, $estimatedTimeAnabolic, $estimatedTimeMaxAnabolic)
+            = $this->estimateProgress($record, $maxWeight);
+
+        $weekManager = $this->weekManager()->setRecord($record);
+
+        return view('dompdf.template')->with([
+            'user'                     => $user,
+            'record'                   => $record,
+            'bmi'                      => $this->calculateBMI($record),
+            'diseases'                 => $this->fetchDiseases($record),
+            'allergies'                => $this->fetchAllergies($record),
+            'excludes'                 => $this->fetchFoodExcludes($record),
+            'quizHints'                => $this->fetchQuizSuggestions($record),
+            'nutrients'                => $this->fetchNutrients(),
+            'diseasesNotes'            => $this->fetchDiseasesNotes($record, 0),
+            'deferDiseasesNotes'       => $this->fetchDiseasesNotes($record, 1),
+            'exercises'                => $this->fetchExercises(),
+            'suggestions'              => $this->fetchSuggestions(),
+            'maxWeight'                => $maxWeight,
+            'estimatedTime'            => join('-', $estimatedTime),
+            'estimatedTimeMax'         => join('-', $estimatedTimeMax),
+            'estimatedTimeAnabolic'    => join('-', $estimatedTimeAnabolic),
+            'estimatedTimeMaxAnabolic' => join('-', $estimatedTimeMaxAnabolic),
+            'metabolism'               => [
+                'current'     => $this->metabolismCalculator()->calculate(
+                    $record->current_weight, $record->height, $user->age()
+                ),
+                'target'      => $this->metabolismCalculator()->calculate(
+                    $record->target_weight, $record->height, $user->age()
+                ),
+                'recommended' => $this->metabolismCalculator()->calculate($maxWeight, $record->height, $user->age())
+            ],
+            'weekDays'                 => $weekManager->getWeekDays(),
+            'schedule'                 => $weekManager->build($record->schedule)
+        ])->render();
+    }
+
+    private function fetchDiseasesNotes(UserHistory $record, $defer = false)
+    {
+        $diseases = $record->diseases()->defer($defer)->get()->map(function ($item) {
+            if (! $item->hasNote() && ($parent = $item->parent) && $parent->hasNote()) {
+                $item->note = $parent->note;
+            }
+            
+            return $item;
+        })->unique('note');
+
+        return $diseases;
+    }
+
+    private function estimateProgress(UserHistory $record, $maxWeight)
+    {
+        $estimator = (new ProgressTimeEstimator)->estimate($record->current_weight, $record->target_weight);
+        $estimatorMax = (new ProgressTimeEstimator)->estimate($record->current_weight, $maxWeight);
+        $estimatedTime = $estimator->getValues();
+        $estimatedTimeAnabolic = $estimator->getAnabolicValues();
+        $estimatedTimeMax = $estimatorMax->getValues();
+        $estimatedTimeMaxAnabolic = $estimatorMax->getAnabolicValues();
+
+        return [$estimatedTime, $estimatedTimeMax, $estimatedTimeAnabolic, $estimatedTimeMaxAnabolic];
+    }
+
+    private function recommendedWeight(User $user, UserHistory $record)
+    {
+        return (new MaxWeight)->calculate($record->height, $user->age());
+    }
+
+    private function fetchNutrients()
+    {
+        return $this->nutrientsRepository->all();
+    }
+
+    private function fetchExercises()
+    {
+        return $this->exercisesRepository->all(true);
+    }
+
+    private function fetchSuggestions()
+    {
+        return $this->suggestionsRepository->all();
+    }
+
+    private function fetchQuizSuggestions(UserHistory $record)
+    {
+        return $this->hintsRepository->allByUserHistory($record->id);
+    }
+
+    private function metabolismCalculator()
+    {
+        if (null == $this->metabolismCalculator) {
+            $this->metabolismCalculator = new BasalMetabolism;
+        }
+
+        return $this->metabolismCalculator;
+    }
+
+    private function fetchDiseases(UserHistory $record)
+    {
+        return $record->diseases->lists('id')->toArray();
+    }
+
+    private function fetchAllergies(UserHistory $record)
+    {
+        return $record->allergies->lists('id')->toArray();
+    }
+
+    private function fetchFoodExcludes(UserHistory $record)
+    {
+        return $record->excludes->lists('id')->toArray();
+    }
+
+    private function calculateBMI(UserHistory $record)
+    {
+        return BMICalculator::driver('female')->calculate($record->height,
+            $record->current_weight);
+    }
+
+    private function weekManager()
+    {
+        if (null === $this->weekManager) {
+            $this->weekManager = new Manager(app('App\Services\Contracts\RecipeFinder'));
+        }
+
+        return $this->weekManager;
+    }
+}
+============================================================
+
+
+app/Services/MaxWeight.php
+============================================================
+<?php namespace App\Services;
+
+use App\BMICalculator\ValueByAge;
+
+class MaxWeight
+{
+    public function calculate($height, $age)
+    {
+        return ceil(pow($this->toMeters($height), 2) 
+    }
+
+    private function toMeters($height)
+    {
+        return round($height/100, 2);
+    }
+}
+============================================================
+
+
+app/Services/MenstrualCycle.php
+============================================================
+<?php namespace App\Services;
+
+use Carbon\Carbon;
+
+class MenstrualCycle
+{
+    const TYPE_CARBON = 'Carbon';
+
+    const TYPE_STRING = 'String';
+
+    protected $returnType = self::TYPE_CARBON;
+
+    public function parse($dateStart, $duration, Carbon $baseDate)
+    {
+        $duration = $this->normalizeDuration($duration);
+
+        $firstDate = Carbon::create($baseDate->year, $baseDate->month, $dateStart);
+
+        if ($dateStart > $baseDate->day) {
+            $firstDate->subMonth();
+        }
+        $firstDate->addDays($duration);
+
+        $p1 = Carbon::parse($firstDate)->addDays(3);
+        $p2 = Carbon::parse($firstDate)->addDays(13);
+        $p3 = Carbon::parse($firstDate)->addDays($duration);
+
+        return $this->toType([
+            $firstDate,
+            $p1,
+            $p2,
+            $p3
+        ]);
+    }
+
+    private function toType($dates)
+    {
+        if (static::TYPE_STRING == $this->returnType) {
+            return array_map([$this, 'toDateString'], $dates);
+        }
+
+        return $dates;
+    }
+
+    public function setReturnType($type)
+    {
+        if (in_array($type, [static::TYPE_CARBON, static::TYPE_STRING])) {
+            $this->returnType = $type;
+        }
+
+        return $this;
+    }
+
+    private function toDateString($data)
+    {
+        return $data->toDateString();
+    }
+
+    private function normalizeDuration($duration)
+    {
+        if (in_array($duration, [-1, -2])) {
+            return 28;
+        }
+
+        return $duration;
+    }
+}
+============================================================
+
+
+app/Services/PdfBuilder.php
+============================================================
+<?php namespace App\Services;
+
+use App\Services\Contracts\PdfBuilder as PdfBuilderContract;
+use App\User;
+use App\UserHistory;
+use Artisan;
+use Illuminate\Filesystem\Filesystem;
+
+class PdfBuilder implements PdfBuilderContract
+{
+    private $filesystem;
+
+    public function __construct(Filesystem $filesystem)
+    {
+        $this->filesystem = $filesystem;
+    }
+
+    public function build($htmlDocument)
+    {
+        $htmlFile = tempnam($tmpDir = sys_get_temp_dir(), '_html');
+        $pdfFile = tempnam($tmpDir, '_pdf');
+
+        $this->filesystem->put(
+            $htmlFile,
+            $htmlDocument
+        );
+
+        $this->convert($htmlFile, $pdfFile);
+
+        return $this->filesystem->get($pdfFile);
+    }
+
+    private function convert($in, $out)
+    {
+        return Artisan::call("html2pdf", ['in' => $in, 'out' => $out]);
+    }
+}
+============================================================
+
+
+app/Services/ProgressTimeEstimator/EstimatedTime.php
+============================================================
+<?php namespace App\Services\ProgressTimeEstimator;
+
+class EstimatedTime
+{
+    private $min;
+    private $max;
+
+    public function __construct($min, $max)
+    {
+        $this->min = (int) $min;
+        $this->max = (int) $max;
+    }
+
+    public function getValues()
+    {
+        return ($this->min == $this->max ? [$this->max] : [$this->min, $this->max]);
+    }
+
+    public function getAnabolicValues()
+    {
+        $periods = $this->decrementedValues();
+
+        return $this->zeroLessValues($periods);
+    }
+
+    private function decrementedValues()
+    {
+        return array_map(function ($period) {
+            return max($period - 1, 0);
+        }, [$this->min, $this->max]);
+    }
+
+    private function zeroLessValues($periods)
+    {
+        return array_filter($periods, function ($period) {
+            return $period > 0;
+        });
+    }
+}
+============================================================
+
+
+app/Services/ProgressTimeEstimator.php
+============================================================
+<?php namespace App\Services;
+
+use App\Services\ProgressTimeEstimator\EstimatedTime;
+
+class ProgressTimeEstimator
+{
+    const PROGRESS_KG_PER_MONTH = 3;
+
+    public function estimate($currentWeight, $recommendedWeight)
+    {
+        $time = max(0, (($currentWeight - $recommendedWeight) / static::PROGRESS_KG_PER_MONTH));
+        $min = floor($time);
+        $max = ceil($time);
+
+        return new EstimatedTime($min, $max);
+    }
+}
+============================================================
+
+
+app/Services/PulseMapper.php
+============================================================
+<?php namespace App\Services;
+
+use App\Exercise;
+
+class PulseMapper
+{
+    private $exercise;
+
+    private $map;
+
+    public function findMax(Exercise $exercise, $pulse)
+    {
+        $this->exercise = $exercise;
+
+        $map = $this->getMap();
+
+        $pulse = $this->normalize($pulse);
+
+        return $map->getAttribute("p_{$pulse}");
+    }
+
+    private function getMap()
+    {
+        if (null === $this->map || $this->map->exercise_id !== $this->exercise->id) {
+            $this->map = $this->exercise->pulseMap;
+        }
+
+        return $this->map;
+    }
+
+    private function normalize($pulse)
+    {
+        $pulse = round($pulse / 10, 0) 
+
+        return $pulse;
+    }
+}
+============================================================
+
+
+app/Services/RecipeFinder.php
+============================================================
+<?php namespace App\Services;
+
+use App\Recipe;
+use App\Recipe\Params;
+use App\Services\Contracts\RecipeFinder as RecipeFinderContract;
+use App\Traits\FindRecipes;
+
+class RecipeFinder implements RecipeFinderContract
+{
+    use FindRecipes;
+
+    protected $query;
+
+    protected $params;
+
+    public function find(Params $params)
+    {
+        $this->params = $params;
+
+        $this->createQuery()
+            ->filterByNutrient()
+            ->filterByEatingNumber()
+            ->filterByPlacement()
+            ->filterBySnack()
+            ->filterBySeason()
+            ->filterByTarget()
+            ->excludeDiseases()
+            ->excludeAllergies()
+            ->excludeFood()
+            ->makeListUnique()
+            ->randomizeResults();
+
+        return $this->query->first();
+    }
+
+    private function makeListUnique()
+    {
+        if (! empty($disables = $this->params->getDisabled())) {
+            $this->query->whereNotIn('recipes.id', (array) $disables);
+        }
+
+        return $this;
+    }
+
+    private function filterBySnack()
+    {
+        $this->query->where('snack', (int) $this->params->isSnack());
+
+        return $this;
+    }
+
+    private function filterByPlacement()
+    {
+        if ($this->params->isSnack()) {
+            return $this;
+        }
+
+        if ($placement = $this->params->getPlacement()) {
+            $this->query = $this->query->whereRaw("(placement IS NULL OR placement='" . $placement . "')");
+        }
+
+        return $this;
+    }
+
+    private function filterByEatingNumber()
+    {
+        if ($this->params->isSnack()) {
+            return $this;
+        }
+
+        if ($num = $this->params->getEatingNum()) {
+            $target = $this->params->forTarget();
+
+    $num = min($num, 3);
+
+            if ($target && 'weight-gain' == $target) {
+                $this->query = $this->query->whereRaw("(eating_gain is NULL OR FIND_IN_SET('{$num}', eating_gain))");
+            } else {
+                $this->query = $this->query->whereRaw("(eating is NULL OR FIND_IN_SET('{$num}', eating))");
+            }
+        }
+
+        return $this;
+    }
+
+    private function filterByNutrient()
+    {
+        $this->query->join('nutrients', function ($join) {
+            $join->on('nutrients.id', '=', 'recipes.nutrient_id')
+                ->where('nutrients.slug', '=', $this->params->getNutrient());
+        });
+
+        return $this;
+    }
+
+    private function filterByTarget()
+    {
+        if ($target = $this->params->forTarget()) {
+            $this->query->whereRaw("(targets is NULL OR FIND_IN_SET('{$target}', targets))");
+        }
+
+        return $this;
+    }
+
+    public function getQuery()
+    {
+        return [
+            $this->query->toSql(),
+            $this->query->getBindings()
+        ];
+    }
+}
+============================================================
+
+
+app/Services/Responses/CardioReaction.php
+============================================================
+<?php namespace App\Services\Responses;
+
+use App\Services\Contracts\CardioReactionDetector AS Detector;
+
+class CardioReaction
+{
+    private $value;
+
+    public function __construct($value)
+    {
+        $this->value = $value;
+    }
+
+    public function id()
+    {
+        $map = [
+            1 => Detector::R_NORMOTONIE . '-' . Detector::R_NORMOTONIE,
+            2 => Detector::R_HIPOTONIE . '-' . Detector::R_NORMOTONIE,
+            3 => Detector::R_HIPOTONIE . '-' . Detector::R_HIPERTONIE,
+            4 => Detector::R_HIPERTONIE . '-' . Detector::R_ATTENTION,
+            5 => Detector::R_NORMOTONIE . '-' . Detector::R_HIPERTONIE
+        ];
+
+        if (false == ($id = array_search($this->value, $map, true))) {
+            throw new \Exception(sprintf('Can not resolve %s', $this->value));
+        }
+
+        return $id;
+    }
+
+    public function toString()
+    {
+        return (string) $this;
+    }
+
+    public function __toString()
+    {
+        return $this->value;
+    }
+}
+============================================================
+
+
+app/Traits/FindRecipes.php
+============================================================
+<?php namespace App\Traits;
+
+use App\Recipe;
+use App\RecipeAllergiesExclude;
+use App\RecipeDiseasesExclude;
+use App\RecipeFoodExclude;
+
+trait FindRecipes
+{
+    protected function createQuery()
+    {
+        $this->query = Recipe::select('recipes.
+
+        return $this;
+    }
+
+    protected function filterBySeason()
+    {
+        $this->query->whereRaw("(season IS NULL OR season LIKE '%" . $this->getSeason() . "%')");
+
+        return $this;
+    }
+
+    protected function getSeason()
+    {
+        $seasons = [
+            0 => 'winter',
+            1 => 'spring',
+            2 => 'summer',
+            3 => 'autumn'
+        ];
+
+        return $seasons[floor(date('n') / 3) % 4];
+    }
+
+    protected function excludeDiseases()
+    {
+        if (! empty($diseases = $this->params->getDiseases()) && ($recipes = $this->getExcludesByDiseases($diseases))) {
+            $this->query->whereNotIn('recipes.id', $recipes);
+        }
+
+        return $this;
+    }
+
+    protected function excludeAllergies()
+    {
+        if (! empty($allergies = $this->params->getAllergies()) && ($recipes = $this->getExcludesByAllergies($allergies))) {
+            $this->query->whereNotIn('recipes.id', $recipes);
+        }
+
+        return $this;
+    }
+
+
+    protected function excludeFood()
+    {
+        if (! empty($excludes = $this->params->getFoodExcludes()) && ($recipes = $this->getExcludesByNotConsumingFood($excludes))) {
+            $this->query->whereNotIn('recipes.id', $recipes);
+        }
+
+        return $this;
+    }
+
+    protected function randomizeResults()
+    {
+        $this->query->orderBy(\DB::raw('RAND()'));
+
+        return $this;
+    }
+
+    protected function getExcludesByNotConsumingFood($excludes)
+    {
+        return RecipeFoodExclude::whereIn('food_excludes_id', $excludes)->lists('recipe_id')->toArray();
+    }
+
+    protected function getExcludesByDiseases($diseases)
+    {
+        return RecipeDiseasesExclude::whereIn('disease_id', $diseases)->lists('recipe_id')->toArray();
+    }
+
+    protected function getExcludesByAllergies($allergies)
+    {
+        return RecipeAllergiesExclude::whereIn('allergy_id', $allergies)->lists('recipe_id')->toArray();
+    }
+}
+============================================================
+
+
+app/Week/Manager.php
+============================================================
+<?php namespace App\Week;
+
+use App\Convert\TimeToMins;
+use App\Nutrient;
+use App\Recipe;
+use App\Recipe\Params;
+use App\Services\Contracts\RecipeFinder;
+
+class Manager
+{
+    private $schedule;
+
+    private $weekDays = ['mon', 'tue', 'wen', 'thu', 'fri', 'sat', 'sun'];
+
+    private $record;
+
+    private $recipeFinder;
+
+    public function __construct(RecipeFinder $recipeFinder)
+    {
+        $this->recipeFinder = $recipeFinder;
+    }
+
+    public function build($schedule)
+    {
+        $this->schedule = $schedule;
+
+        $schedule = [];
+
+        $diseases = $this->record->diseases->lists('id')->toArray();
+        $allergies = $this->record->allergies->lists('id')->toArray();
+        $excludes = $this->record->excludes->lists('id')->toArray();
+
+        $params = new Params();
+        $params->setForTarget($target = $this->record->target->slug);
+
+
+        foreach ($this->weekDays as $dayNum => $day) {
+            $disabled = [];
+            $type = $this->schedule[$day]['type'];
+
+            $nutrition = [];
+            $workoutTime = null;
+            if (in_array($type, ['activity', 'rest'])) {
+                if ('activity' == $type) {
+                    $workoutTime = $this->schedule[$day]['time'];
+                    $dailySchedule = $this->loadScheduler()->schedule($workoutTime);
+                } else {
+                    $dailySchedule = $this->restScheduler()->schedule();
+                }
+
+                $eatingNum = 0;
+                foreach ($dailySchedule as $hour => $nutrient) {
+                    if ('water' == $nutrient) {
+                        continue;
+                    }
+
+                    list($eating, $nutrient) = explode(':', $nutrient);
+
+                    $isSnack = ('snack' == $eating);
+                    if ('main' == $eating) {
+                        $eatingNum++;
+                    }
+
+                    $params->setNutrient($nutrient)
+                        ->setSnack($isSnack)
+                        ->setEatingNum($eatingNum)
+                        ->setDiseases($diseases)
+                        ->setAllergies($allergies)
+                        ->setFoodExcludes($excludes)
+                        ->setDisabled($disabled);
+
+                    $placement = null;
+                    if ('activity' == $type && ! $isSnack) {
+                        $hourInMins = (new TimeToMins($hour))->convert();
+                        $workoutTimeInMins = (new TimeToMins($workoutTime))->convert();
+
+                        $placement = $hourInMins == $workoutTime ? null : ($hourInMins > $workoutTimeInMins ? 'after' : 'before');
+                    }
+                    $params->setPlacement($placement);
+
+                    $recipe = $this->recipeFinder->find($params);
+
+                    if (! $recipe) {
+                        $recipe = new Recipe([
+                            'nutrient'  => new Nutrient(['name' => $nutrient]),
+                            'name'      => 'Not found (' . $params->debug() . ')',
+                            'quantity'  => 0,
+                            'season'    => null,
+                            'snack'     => $isSnack,
+                            'eating'    => $eatingNum,
+                            'placement' => $placement
+                        ]);
+                    }
+
+                    if ($recipe && $recipe->id) {
+                        $disabled[] = $recipe->id;
+                    }
+
+                    $nutrition[$hour] = [
+                        'nutrient'  => $recipe->nutrient->name,
+                        'name'      => /
+                        'quantity'  => $recipe->getQuantity($target),
+                        'season'    => $recipe->season,
+                        'snack'     => $recipe->snack,
+                        'eating'    => $recipe->eating,
+                        'placement' => $recipe->placement
+                    ];
+                }
+            } else {
+                $nutrition = glossary('definition.detoxification', 'body');
+            }
+
+            $schedule[$dayNum] = [
+                'day' => $day,
+                'type' => $type,
+                'workout' => $workoutTime,
+                'nutrition' => $nutrition
+            ];
+        }
+
+        return $schedule;
+    }
+
+    private function loadScheduler()
+    {
+        return app('LoadScheduler')->driver($this->record->target->slug);
+    }
+
+    private function restScheduler()
+    {
+        return app('RestScheduler')->driver($this->record->target->slug);
+    }
+
+    public function getWeekDays()
+    {
+        return $this->weekDays;
+    }
+
+    public function setRecord($record)
+    {
+        $this->record = $record;
+
+        return $this;
+    }
+}
+============================================================

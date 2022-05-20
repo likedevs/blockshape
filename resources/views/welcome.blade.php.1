@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    @include('head.seo')
+
+    <link rel="stylesheet" href="{{ elixir('css/landing.css') }}"/>
+</head>
+<body>
+<div class="outerWrap clear">
+    @include('landing.header')
+
+    <div class="wrap_947 clear">
+        <div class="topTxt titleTxt f_red">
+            <p>știi cum să te alimentezi corect? vrei să slăbești sănătos?</p>
+        </div>
+    </div>
+    <div class="wrap_1200 clear">
+        <ul class="top_imgPub clear">
+            <li>
+                <div class="pubImg"><img src="{{ asset('landing/img/sport_img.png') }}" alt="sport">
+                    <p class="f_red">Efort fizic</p>
+                </div>
+            </li>
+            <li>
+                <div class="pubImg"><img src="{{ asset('landing/img/food_img.png') }}" alt="food">
+                    <p class="f_red">Menu alimentar <br/>
+                        personalizat</p>
+                </div>
+            </li>
+            <li>
+                <div class="pubImg"><img src="{{ asset('landing/img/med_img.png') }}" alt="medicine">
+                    <p class="f_red">Recomandări generale<br/>
+                        și investigații</p>
+                </div>
+            </li>
+        </ul>
+    </div>
+    <div class="wrap_947 clear">
+        <div class="greyTxt titleTxt f_grey">
+            <p>De ce ai nevoie de Testare Nutrițională și Fiziologică?</p>
+        </div>
+        <ul class="stepCircle clear">
+            <li>
+                <div class="leftDot dot">
+                    <h1>AFLI</h1>
+                    <p>în cât timp poţi obţine rezultatul dorit</p>
+                    <div class="arrow">
+
+                    </div>
+                </div>
+            </li>
+            <li>
+                <div class="centerDot dot">
+                    <h1>ȘTII</h1>
+                    <p>exact ce și când să mănânci</p>
+                    <div class="arrow">
+
+                    </div>
+                </div>
+            </li>
+            <li>
+                <div class="rightDot dot">
+                    <h1>APLICI</h1>
+                    <p>recomandările personalizate pentru un mod de viață sănătos</p>
+                </div>
+            </li>
+        </ul>
+        <div class="middleTitle">
+            <a href="#butoane"><p class="titleTxt">IA-ȚI TESTARE NUTRIȚIONALĂ ȘI FIZIOLOGICĂ!</p></a>
+        </div>
+        <div class="dwn_arrow">
+
+        </div>
+        <div class="titleTxt f_red tblTxt">
+            <p>Ce vei afla?</p>
+        </div>
+        <div class="tabel clear">
+            <div class="cont_tbl clear">
+                <div class="celula">
+                    <p>Masa corporală recomandată</p>
+                    <div class="tblIcon"><i class="fa fa-check-square"></i></div>
+                </div>
+                <div class="celula">
+                    <p>Indicele masei corporale</p>
+                    <div class="tblIcon"><i class="fa fa-exclamation-triangle"></i></div>
+                </div>
+                <div class="celula">
+                    <p>Tipul constituțional</p>
+                    <div class="tblIcon"><i class="fa fa-female"></i></div>
+                </div>
+                <div class="celula">
+                    <p>Etapele și durata programului de transformare a siluetei</p>
+                    <div class="tblIcon"><i class="fa fa-list-ol"></i></div>
+                </div>
+                <div class="celula">
+                    <p>Programul de transformare a siluetei</p>
+                    <div class="tblIcon"><i class="fa fa-calendar"></i></div>
+                </div>
+                <div class="celula">
+                    <p>Reacția sistemului cardiovascular la efort fizic</p>
+                    <div class="tblIcon"><i class="fa fa-heartbeat"></i></div>
+                </div>
+                <div class="celula">
+                    <p>Pulsul recomandat pentru a obține rezultatul dorit</p>
+                    <div class="tblIcon"><i class="fa fa-line-chart"></i></div>
+                </div>
+                <div class="celula">
+                    <p>Meniul alimentar personalizat</p>
+                    <div class="tblIcon"><i class="fa fa-cutlery"></i></div>
+                </div>
+                <div class="celula">
+                    <p>Numărul de calorii pe care le consumi</p>
+                    <div class="tblIcon"><i class="fa fa-calculator"></i></div>
+                </div>
+                <div class="celula">
+                    <p>Alimente recomandate pentru detoxifiere</p>
+                    <div class="tblIcon"><i class="fa fa-refresh"></i></div>
+                </div>
+                <div class="celula">
+                    <p>Recomandările pentru corectarea erorilor alimentare</p>
+                    <div class="tblIcon"><i class="fa fa-thumb-tack"></i></div>
+                </div>
+                <div class="celula">
+                    <p>Investigațiile medicale recomandate</p>
+                    <div class="tblIcon"><i class="fa fa-medkit"></i></div>
+                </div>
+            </div>
+        </div>
+        <div class="titleTxt f_red">
+            <p class="bottomTxt">ALEGE ÎN CÂT TIMP DOREȘTI SĂ PRIMEȘTI TESTAREA NUTRIȚIONALĂ ȘI FIZIOLOGICĂ</p>
+        </div>
+        <ul id="butoane" class="priceBtn clear">
+            {{ $single = 1 == $offers->count() }}
+            @foreach($offers as $offer)
+                <li class="titleTxt clear" style="{{ $single ? 'width: 100%' : '' }}">
+                    <div class="btnPay" {!! ( $single ? 'style="float: none; width: 100%;"' : '')  !!}>
+                        <a href="{{ route('order-offer', ['offer' => $offer->id]) }}">
+                            {{ $offer->title }}
+                            – {{ $offer->price }} {{ $offer->currency }}
+                        </a>
+                    </div>
+                </li>
+            @endforeach
+        </ul>
+
+        {{--<div class="selectTxt">--}}
+        {{--<p class="titleTxt">Contacte</p>--}}
+        {{--</div>--}}
+
+        {{--<div class="tabel clear">--}}
+        {{--<div class="cont_tbl clear">--}}
+        {{--<div class="celula contacts">--}}
+        {{--<p>Tel: 069 000 682</p>--}}
+        {{--<div class="tblIcon"><i class="fa fa-phone"></i></div>--}}
+        {{--</div>--}}
+        {{--<div class="celula contacts">--}}
+        {{--<p>natalia.velicoglo@unicasport.md</p>--}}
+        {{--<div class="tblIcon"><i class="fa fa-envelope"></i></div>--}}
+        {{--</div>--}}
+        {{--</div>--}}
+        {{--</div>--}}
+
+        {{--<a name="filiale"></a>--}}
+        {{--@include('offices.list')--}}
+
+        <div class="selectTxt">
+            <p class="titleTxt">Plăți securizate cu:</p>
+        </div>
+        <ul class="payment clear">
+            <li><a></a></li>
+            <li><a></a></li>
+            <li><a></a></li>
+            <li><a></a></li>
+        </ul>
+    </div>
+
+    @include('landing.footer')
+</div>
+</body>
+</html>

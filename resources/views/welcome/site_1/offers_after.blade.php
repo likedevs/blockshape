@@ -1,0 +1,1 @@
+<p style="color:#8d9291; padding-top:10px;">* deoarece numărul cererilor ar putea fi mai mare pe parcursul promoției, vă informăm că ar fi posibil o deviere cu pina la 12 ore la primirea Testării Nutriţionale şi Fiziologice + Regimul Alimentar Personalizat pe adresa de email. Vă mulțumim pentru înțelegere.</p>

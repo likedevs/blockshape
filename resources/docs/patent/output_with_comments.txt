@@ -1,0 +1,3274 @@
+app/BMICalculator/AbstractCalculator.php
+============================================================
+<?php namespace App\BMICalculator;
+
+abstract class AbstractCalculator
+{
+    protected function normalizeHeight($height)
+    {
+        if ($height > 100) {
+            $height /= 100;
+        }
+
+        return $height;
+    }
+}
+============================================================
+
+
+app/BMICalculator/BMIValue.php
+============================================================
+<?php namespace App\BMICalculator;
+
+class BMIValue
+{
+    protected $value;
+
+    public function __construct($value)
+    {
+        $this->value = round($value, 1);
+    }
+
+    public function getValue()
+    {
+        return $this->value;
+    }
+
+    public function resolve()
+    {
+        return (new EloquentProvider)->find($this);
+    }
+}
+============================================================
+
+
+app/BMICalculator/Contracts/BMICalculator.php
+============================================================
+<?php namespace App\BMICalculator\Contracts;
+
+interface BMICalculator
+{
+    const BMI_UNDERWEIGHT        = 'underweight';
+    const BMI_OVERWEIGHT         = 'overweight';
+    const BMI_HEAVILY_OVERWEIGHT = 'heavily_overweight';
+    const BMI_NORMAL             = 'normal';
+
+    public function calculate($height, $weight);
+}
+============================================================
+
+
+app/BMICalculator/EloquentProvider.php
+============================================================
+<?php namespace App\BMICalculator;
+
+use App\Imc;
+
+class EloquentProvider
+{
+    public function find(BMIValue $bmiValue)
+    {
+        return Imc::where('value_min', '<=', $value = $bmiValue->getValue())->where('value_max', '>=', $value)->first();
+    }
+}
+============================================================
+
+
+app/BMICalculator/FemaleCalculator.php
+============================================================
+<?php namespace App\BMICalculator;
+
+use App\BMICalculator\Contracts\BMICalculator AS CalculatorContract;
+
+class FemaleCalculator extends AbstractCalculator implements CalculatorContract
+{
+    /**
+     * Calculate bmi based on provided measurements
+     *
+     * @param int $height
+     * @param int $weight
+     * @return float
+     */
+    public function calculate($height, $weight)
+    {
+        $height = $this->normalizeHeight($height);
+
+        return new BMIValue($weight / pow($height, 2));
+    }
+}
+============================================================
+
+
+app/BMICalculator/ValueByAge.php
+============================================================
+<?php namespace App\BMICalculator;
+
+class ValueByAge
+{
+    /**
+     * Get recommended IMC by customer age
+     *
+     * @param $age
+     * @return float
+     */
+    public static function get($age)
+    {
+        $reference = [
+            '15-20' => 18,
+            '21-25' => 18.5,
+            '26-30' => 19,
+            '31-35' => 19.5,
+            '36-40' => 20,
+            '41-45' => 21,
+            '46-50' => 22,
+            '51-60' => 23
+        ];
+
+        foreach ($reference as $ages => $imc) {
+            list($min, $max) = explode('-', $ages);
+            if ($age >= $min && $age <= $max) {
+                return $imc;
+            }
+        }
+
+        return 21.75;
+    }
+}
+============================================================
+
+
+app/Nutrition/Load/AbstractDriver.php
+============================================================
+<?php namespace App\Nutrition\Load;
+
+abstract class AbstractDriver
+{
+    /**
+     * Min nutrition time
+     *
+     * @var int
+     */
+    protected $hourMin;
+
+    /**
+     * Max nutrition time
+     *
+     * @var int
+     */
+    protected $hourMax;
+
+    /**
+     * The total (max) number of food outlets
+     *
+     * @var
+     */
+    protected $eatingsNumber;
+
+    /**
+     * Nutrition rules based on time shift related by exercise time
+     *
+     * @var array
+     */
+    protected $rules = [];
+
+    /**
+     * Resulted nutrition schedule
+     *
+     * @var array
+     */
+    protected $schedule = [];
+
+    /**
+     * Rules indexes
+     *
+     * @var array
+     */
+    protected $shifts;
+
+    /**
+     * Workout time (in minutes)
+     *
+     * @var integer
+     */
+    protected $time;
+
+    /**
+     * Index of current rule
+     *
+     * @var integer
+     */
+    protected $ruleIndex;
+
+    /**
+     * Handles relation btw timeShift and selected nutrient
+     * Used for easy lookup then detecting mirroring timeShifts
+     *
+     * @var array
+     */
+    protected $shiftNutrient = [];
+
+    /**
+     * Index of Zero time rule
+     *
+     * @var int
+     */
+    protected $startIndex;
+
+    /**
+     * Index of shift where Left shifting stopped out
+     *
+     * @var int
+     */
+    protected $movingLeftStopped;
+
+    /**
+     * Index of shift where Right shifting stopped out
+     *
+     * @var int
+     */
+    protected $movingRightStopped;
+
+    protected $iteration = 1;
+
+    public function __construct()
+    {
+        $this->shifts = array_keys($this->rules);
+
+        $this->startIndex = array_search(0, $this->shifts);
+    }
+
+    /**
+     * Generate nutrition schedule
+     *
+     * @param $time - Exercise time
+     * @return array
+     */
+    public function schedule($time)
+    {
+        $this->time = time_to_mins($time);
+
+        while (true) {
+            $shiftedLeft = $shiftedRight = 0;
+
+            // if previous timeShift exists
+            if (! $this->movingLeftStopped) {
+                if (($this->ruleIndex = $this->canShiftLeft()) !== false && ! ($shiftedLeft = $this->fillSchedule())) {
+                    $this->movingLeftStopped = $this->startIndex - $this->iteration;
+                }
+            }
+
+            if ($this->scheduleFilled()) {
+                break;
+            }
+
+            // if next timeShift exists
+            if (! $this->movingRightStopped) {
+                if (($this->ruleIndex = $this->canShiftRight()) !== false && ! ($shiftedRight = $this->fillSchedule())) {
+                    $this->movingRightStopped = $this->startIndex + $this->iteration;
+                }
+            }
+
+            if ($this->scheduleFilled()) {
+                break;
+            }
+
+            if (! ($shiftedLeft || $shiftedRight)) {
+                break;
+            }
+
+            $this->nextIteration();
+        }
+
+        // use non-greedy logic to add missing hours in places where potentially can be ignored main hours shift and added a smaller shift
+        if (! $this->scheduleFilled()) {
+            $this->orderScheduleByTime();
+            $this->addMissingHours();
+        }
+
+        // add nutrition during exercise
+        $this->schedule[$this->time] = $this->extractNutrient(0);
+
+        $this->orderScheduleByTime();
+
+        return $this->keysToTime();
+    }
+
+    /**
+     * @return bool
+     */
+    private function canShiftLeft()
+    {
+        $nextIndex = $this->startIndex - $this->iteration;
+
+        return $nextIndex >= 0 ? $nextIndex : false;
+    }
+
+    /**
+     * @return bool
+     */
+    private function canShiftRight()
+    {
+        return ($nextIndex = $this->startIndex + $this->iteration) < count($this->shifts) ? $nextIndex : false;
+    }
+
+    /**
+     * Get nutrition for specific hour
+     *
+     * @return int
+     */
+    protected function fillSchedule()
+    {
+        $shiftHours = $this->shift();
+
+        $minutes = $this->getShiftedTime($shiftHours);
+
+        $hour = $this->hour($minutes);
+
+        if ($this->eatableTime($hour) || (abs($hour - $this->hourMin) == 1 || abs($hour - $this->hourMax) == 1)) {
+            if ($minutes > (($this->hourMax + 1) * 60) && ($minutes - $this->time > 180)) {
+                $minutes -= 30;
+            } else if ($minutes <= ($this->hourMin - 1) * 60) {
+                $minutes += 30;
+            }
+
+            $this->schedule[$minutes] = $nutrient = $this->extractNutrient($shiftHours);
+            $this->shiftNutrient[$shiftHours] = substr($nutrient, strpos($nutrient, ':') + 1);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Time shift by index
+     *
+     * @param null $byIndex
+     * @return mixed
+     */
+    protected function shift($byIndex = null)
+    {
+        if (! $byIndex)
+            $byIndex = $this->ruleIndex;
+
+        return $this->shifts[$byIndex];
+    }
+
+    /**
+     * @param $hoursShift
+     * @return mixed
+     */
+    protected function getShiftedTime($hoursShift)
+    {
+        $minutes = $this->time + $hoursShift * 60;
+
+        if ($this->positiveShift($hoursShift)) {
+            $minutes += 60;
+        }
+
+        return $minutes;
+    }
+
+    /**
+     * Check if selected time is later then exercise time
+     *
+     * @param $hoursShift
+     * @return bool
+     */
+    protected function positiveShift($hoursShift)
+    {
+        return $hoursShift > 0;
+    }
+
+    /**
+     * @param $minutes
+     * @return array
+     */
+    protected function hour($minutes)
+    {
+        return floor($minutes / 60);
+    }
+
+    /**
+     * Allow to eat at this time or not
+     *
+     * @param $hour
+     * @return bool
+     */
+    protected function eatableTime($hour)
+    {
+        return ((int) $hour >= $this->hourMin && (int) $hour <= $this->hourMax);
+    }
+
+    /**
+     * @param       $shiftHours
+     * @return mixed
+     */
+    protected function extractNutrient($shiftHours)
+    {
+        if (is_string($this->rules[$shiftHours])) {
+            return $this->rules[$shiftHours];
+        } else {
+            $options = $this->rules[$shiftHours];
+            $type = $options['type'];
+            $nutrients = $options['nutrients'];
+
+            if (count($this->shiftNutrient) && count($nutrients) > 1) {
+                $nutrientCounts = array_count_values($this->shiftNutrient);
+                arsort($nutrientCounts);
+                $exclude = array_keys($nutrientCounts)[0];
+
+                $nutrients = array_filter($nutrients, function ($nutrient) use ($exclude) {
+                    return $nutrient != $exclude;
+                });
+
+                if (in_array('vegetables-carbohydrates', $nutrients) && 1 == count($nutrients)) {
+                    $nutrients[] = $exclude;
+                }
+            }
+
+            if (method_exists($this, 'fixNutrients') && $response = $this->fixNutrients($shiftHours, $type)) {
+                list($type, $nutrients) = $response;
+            }
+
+            shuffle($nutrients);
+            $nutrient = $type . ":" . $nutrients[0];
+        }
+
+        return $nutrient;
+    }
+
+    /**
+     * @return bool
+     */
+    private function scheduleFilled()
+    {
+        return count($this->schedule) == ($this->eatingsNumber);
+    }
+
+    /**
+     * @return mixed
+     */
+    protected function nextIteration()
+    {
+        $this->iteration++;
+    }
+
+    /**
+     * Order schedule by time
+     *
+     */
+    protected function orderScheduleByTime()
+    {
+        ksort($this->schedule);
+    }
+
+    private function addMissingHours()
+    {
+        $scheduleHours = array_keys($this->schedule);
+
+        $shiftLeft = $this->startIndex - $this->movingLeftStopped;
+        $shiftRight = $this->movingRightStopped - $this->startIndex;
+
+        if (! $this->scheduleFilled() && $shiftLeft < $shiftRight && ($firstEatingTime = array_shift($scheduleHours))) {
+            $expectedShift = abs($this->shift($this->movingLeftStopped + 1) - $this->shift($this->movingLeftStopped));
+            $allowShift = ceil(max($expectedShift - 2, 1) / 2);
+            if ($allowShift <= 1) {
+                $missingTime = $this->hourMin * 60 - $allowShift * 60;
+                $this->schedule[$missingTime] = $this->extractNutrient($this->shift($this->movingLeftStopped));
+            }
+        }
+
+        if (! $this->scheduleFilled() && $shiftRight < $shiftLeft && ($lastEatingTime = array_pop($scheduleHours))) {
+            $expectedShift = abs($this->shift($this->movingRightStopped + 1) - $this->shift($this->movingRightStopped));
+            $allowShift = ceil(max($expectedShift - 2, 1) / 2);
+            if ($allowShift <= 1) {
+                $missingTime = $this->hourMax * 60 + $allowShift * 60;
+                $this->schedule[$missingTime] = $this->extractNutrient($this->shift($this->movingRightStopped));
+            }
+        }
+    }
+
+    private function keysToTime()
+    {
+        $vals = array_values($this->schedule);
+        $keys = array_keys($this->schedule);
+        $keys = array_map(function ($key) {
+            return mins_to_time($key);
+        }, $keys);
+
+        return array_combine($keys, $vals);
+    }
+
+    /**
+     * @param $mins
+     * @param $hours
+     * @return array
+     */
+    protected function zeroPaddify($hours, $mins)
+    {
+        $hours = str_pad($hours, 2, '0', STR_PAD_LEFT);
+        $mins = str_pad($mins, 2, '0', STR_PAD_LEFT);
+
+        return [$hours, $mins];
+    }
+}
+============================================================
+
+
+app/Nutrition/Load/Maintenance.php
+============================================================
+<?php namespace App\Nutrition\Load;
+
+class Maintenance extends WeightLoss
+{
+    protected $hourMin = 7;
+
+    protected $hourMax = 19;
+}
+============================================================
+
+
+app/Nutrition/Load/WeightGain.php
+============================================================
+<?php namespace App\Nutrition\Load;
+
+class WeightGain extends AbstractDriver
+{
+    protected $hourMin = 7;
+
+    protected $hourMax = 20;
+
+    protected $eatingsNumber = 7;
+
+    protected $rules = [
+        -14 => [
+            'type' => 'main',
+            'nutrients' => ['carbohydrates'/*, 'vegetables-carbohydrates'*/]
+        ],
+        -12 => [
+            'type' => 'snack',
+            'nutrients' => ['carbohydrates', 'proteins']
+        ],
+        -10 => [
+            'type' => 'main',
+            'nutrients' => ['carbohydrates']
+        ],
+        -8 => [
+            'type' => 'snack',
+            'nutrients' => ['carbohydrates', 'proteins']
+        ],
+        -6 => [
+            'type' => 'main',
+            'nutrients' => [/*'vegetables-carbohydrates', */'carbohydrates']
+        ],
+        -4 => [
+            'type' => 'snack',
+            'nutrients' => ['carbohydrates', 'proteins']
+        ],
+        -2 => [
+            'type' => 'main',
+            'nutrients' => ['carbohydrates']
+        ],
+        0 => 'water', /*'carbohydrates'*/
+        2 => [
+            'type' => 'main',
+            'nutrients' => ['proteins-carbohydrates']
+        ],
+        4 => [
+            'type' => 'snack',
+            'nutrients' => ['carbohydrates', 'proteins']
+        ],
+        6 => [
+            'type' => 'main',
+            'nutrients' => [/*'vegetables-carbohydrates', */'carbohydrates']
+        ],
+        8 => [
+            'type' => 'snack',
+            'nutrients' => ['carbohydrates', 'proteins']
+        ],
+        10 => [
+            'type' => 'main',
+            'nutrients' => ['carbohydrates']
+        ],
+        12 => [
+            'type' => 'snack',
+            'nutrients' => ['carbohydrates', 'proteins']
+        ],
+        14 => [
+            'type' => 'main',
+            'nutrients' => ['carbohydrates'/*, 'vegetables-carbohydrates'*/]
+        ]
+    ];
+
+    protected function fixNutrients($shiftHours, $type)
+    {
+        if ($this->positiveShift($shiftHours) && 'main' == $type) {
+            $hour = $this->hour($this->time);
+
+            if (($hour + $shiftHours + 1) >= $this->hourMax) {
+                if ($nextShift = $this->shifts[array_search($shiftHours, $this->shifts) + 1]) {
+                    $type = 'snack';
+                    $nutrients = $this->rules[$nextShift]['nutrients'];
+
+                    return [$type, $nutrients];
+                }
+            }
+        }
+
+        return null;
+    }
+}
+============================================================
+
+
+app/Nutrition/Load/WeightLoss.php
+============================================================
+<?php namespace App\Nutrition\Load;
+
+class WeightLoss extends AbstractDriver
+{
+    protected $hourMin = 7;
+
+    protected $hourMax = 18;
+
+    protected $eatingsNumber = 5;
+
+    protected $rules = [
+        -11 => [
+            'type'      => 'main',
+            'nutrients' => ['proteins-carbohydrates', 'carbohydrates']
+        ],
+        -9  => [
+            'type'      => 'snack',
+            'nutrients' => ['proteins']
+        ],
+        -7  => [
+            'type'      => 'main',
+            'nutrients' => ['proteins-carbohydrates', 'carbohydrates']
+        ],
+        -5  => [
+            'type'      => 'snack',
+            'nutrients' => ['carbohydrates', /*'vegetables-carbohydrates',*/ 'proteins']
+        ],
+        -2  => [
+            'type'      => 'main',
+            'nutrients' => ['carbohydrates'/*, 'vegetables-carbohydrates'*/]
+        ],
+        0   => 'water',
+        2   => [
+            'type'      => 'main',
+            'nutrients' => ['carbohydrates'/*, 'vegetables-carbohydrates'*/]
+        ],
+        5   => [
+            'type'      => 'snack',
+            'nutrients' => ['carbohydrates', 'proteins']
+        ],
+        7   => [
+            'type'      => 'main',
+            'nutrients' => ['proteins-carbohydrates', 'carbohydrates'/*, 'vegetables-carbohydrates'*/]
+        ],
+        9   => [
+            'type'      => 'snack',
+            'nutrients' => ['proteins']
+        ],
+        11  => [
+            'type'      => 'main',
+            'nutrients' => ['proteins-carbohydrates', 'carbohydrates']
+        ]
+    ];
+}
+============================================================
+
+
+app/Nutrition/Rest/AbstractDriver.php
+============================================================
+<?php namespace App\Nutrition\Rest;
+
+abstract class AbstractDriver
+{
+    protected $rules;
+
+    public function schedule()
+    {
+        $schedule = [];
+
+        foreach ($this->rules as $time => $nutrients) {
+            $schedule[$time] = $this->extractNutrient($time);
+        }
+
+        return $schedule;
+    }
+
+    /**
+     * @param $shiftHours
+     * @return mixed
+     */
+    protected function extractNutrient($shiftHours)
+    {
+        list($type, $nutrients) = explode(':', $this->rules[$shiftHours]);
+        $options = explode('|', $nutrients);
+        $nutrient = $options[array_rand($options)];
+
+        return "{$type}:{$nutrient}";
+    }
+}
+============================================================
+
+
+app/Nutrition/Rest/WeightGain.php
+============================================================
+<?php namespace App\Nutrition\Rest;
+
+class WeightGain extends AbstractDriver
+{
+    protected $rules = [
+        '07:00' => 'main:proteins-carbohydrates|carbohydrates',
+        '11:00' => 'snack:carbohydrates',
+        '14:00' => 'main:proteins-carbohydrates',
+        '16:00' => 'snack:carbohydrates|proteins',
+        '18:00' => 'main:carbohydrates|proteins-carbohydrates'
+    ];
+}
+============================================================
+
+
+app/Nutrition/Rest/WeightLoss.php
+============================================================
+<?php namespace App\Nutrition\Rest;
+
+class WeightLoss extends AbstractDriver
+{
+    protected $rules = [
+        '07:00' => 'main:proteins-carbohydrates|carbohydrates',
+        '11:00' => 'snack:carbohydrates',
+        '14:00' => 'main:proteins-carbohydrates',
+        '16:00' => 'snack:carbohydrates|proteins',
+        '18:00' => 'main:carbohydrates|proteins-carbohydrates'
+    ];
+}
+============================================================
+
+app/Recipe/Params.php
+============================================================
+<?php namespace App\Recipe;
+
+class Params
+{
+    const PLACEMENT_BEFORE = 'before';
+
+    const PLACEMENT_AFTER = 'after';
+
+    protected $nutrient;
+
+    protected $forTarget = null;
+
+    protected $snack = false;
+
+    protected $eatingNum = null;
+
+    protected $placement = null;
+
+    protected $diseases = [];
+
+    protected $allergies = [];
+
+    protected $foodExcludes = [];
+
+    protected $disabled = [];
+
+    /**
+     * @return mixed
+     */
+    public function getNutrient()
+    {
+        return $this->nutrient;
+    }
+
+    /**
+     * @param mixed $nutrient
+     * @return $this
+     */
+    public function setNutrient($nutrient)
+    {
+        $this->nutrient = $nutrient;
+
+        return $this;
+    }
+
+    /**
+     * @return boolean
+     */
+    public function isSnack()
+    {
+        return $this->snack;
+    }
+
+    /**
+     * @param boolean $snack
+     * @return $this
+     */
+    public function setSnack($snack)
+    {
+        $this->snack = (bool) $snack;
+
+        return $this;
+    }
+
+    /**
+     * @return null
+     */
+    public function getEatingNum()
+    {
+        return $this->eatingNum;
+    }
+
+    /**
+     * @param null $eatingNum
+     * @return $this
+     */
+    public function setEatingNum($eatingNum)
+    {
+        $this->eatingNum = (int) $eatingNum;
+
+        return $this;
+    }
+
+    /**
+     * @return null
+     */
+    public function getPlacement()
+    {
+        return $this->placement;
+    }
+
+    /**
+     * @param null $placement
+     * @return $this
+     * @throws \Exception
+     */
+    public function setPlacement($placement)
+    {
+        if (null != $placement && ! in_array($placement, [static::PLACEMENT_BEFORE, static::PLACEMENT_AFTER])) {
+            throw new \Exception("Invalid placement");
+        }
+
+        $this->placement = $placement;
+
+        return $this;
+    }
+
+    /**
+     * @return array
+     */
+    public function getDiseases()
+    {
+        return $this->diseases;
+    }
+
+    /**
+     * @param array $diseases
+     * @return $this
+     */
+    public function setDiseases(array $diseases = [])
+    {
+        $this->diseases = $diseases;
+
+        return $this;
+    }
+
+    /**
+     * @return array
+     */
+    public function getAllergies()
+    {
+        return $this->allergies;
+    }
+
+    /**
+     * @param array $allergies
+     * @return $this
+     */
+    public function setAllergies(array $allergies = [])
+    {
+        $this->allergies = $allergies;
+
+        return $this;
+    }
+
+    /**
+     * @return array
+     */
+    public function getFoodExcludes()
+    {
+        return $this->foodExcludes;
+    }
+
+    /**
+     * @param array $foodExcludes
+     * @return $this
+     */
+    public function setFoodExcludes(array $foodExcludes = [])
+    {
+        $this->foodExcludes = $foodExcludes;
+
+        return $this;
+    }
+
+    /**
+     * @return array
+     */
+    public function getDisabled()
+    {
+        return $this->disabled;
+    }
+
+    /**
+     * @param array $disabled
+     * @return $this
+     */
+    public function setDisabled(array $disabled = [])
+    {
+        $this->disabled = $disabled;
+
+        return $this;
+    }
+
+    public function debug()
+    {
+        $params = [];
+
+        $reflection = new \ReflectionClass($this);
+
+        foreach ($reflection->getProperties() as $property) {
+            $name = $property->name;
+            $value = $this->$name;
+
+            if (is_array($value)) {
+                $value = "[" . (empty($value) ? "" : join(", ", $value)) . "]";
+            }
+
+            $params[] = "{$name}: {$value}";
+        }
+
+        return join(" | ", $params);
+    }
+
+    /**
+     * @return null
+     */
+    public function forTarget()
+    {
+        return $this->forTarget;
+    }
+
+    /**
+     * @param null $forTarget
+     * @return $this
+     */
+    public function setForTarget($forTarget)
+    {
+        $this->forTarget = $forTarget;
+
+        return $this;
+    }
+}
+============================================================
+
+
+app/Repositories/AllergiesRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+class AllergiesRepository extends Repository
+{
+    /**
+     * Fetch the whole available allergies
+     *
+     * @return mixed
+     */
+    public function all()
+    {
+        return $this->createModel()->orderBy('name')->get();
+    }
+}
+============================================================
+
+
+app/Repositories/DepartmentsRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+use App\User;
+
+class DepartmentsRepository extends Repository
+{
+    /**
+     * Get list of all offices
+     *
+     * @return mixed
+     */
+    public function all()
+    {
+        return $this->createModel()->orderBy('name')->get();
+    }
+
+    /**
+     * Get list of offices instsructor belongs to
+     *
+     * @param User $instructor
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
+     */
+    public function instructorBelongsTo(User $instructor)
+    {
+        return $instructor->offices;
+    }
+}
+============================================================
+
+
+app/Repositories/DiseasesRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+class DiseasesRepository extends Repository
+{
+    public function all()
+    {
+        $list = $this->createModel()->unRanked()->orderBy('id')->get(['id', 'name', 'parent_id', 'rank'])->toArray();
+
+        return $this->sort(
+            $this->makeTree($list)
+        );
+    }
+
+    /**
+     * @param $list
+     *
+     * @return array
+     */
+    private function makeTree($list)
+    {
+        $out = [];
+
+        foreach ($list as $item) {
+            if (is_null($item['parent_id'])) {
+                $out[$item['id']] = $item;
+                if (!array_key_exists('children', $out[$item['id']])) {
+                    $out[$item['id']]['children'] = [];
+                }
+            } else {
+                $out[$item['parent_id']]['children'][] = $item;
+            }
+        }
+
+
+        return $out;
+    }
+
+    /**
+     * Sort tree by rank field
+     *
+     * @param $tree
+     */
+    private function sort($tree)
+    {
+        foreach($tree as &$value) {
+            if (! empty($value['children'])) {
+                $value['children'] = $this->sort($value['children']);
+            }
+        }
+
+        usort($tree, function ($a, $b) {
+            return $a['rank'] < $b['rank'] ? -1 : ($a['rank'] == $b['rank'] ? 0 : 1);
+        });
+
+        return $tree;
+    }
+}
+============================================================
+
+
+app/Repositories/ExcludesRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+class ExcludesRepository extends Repository
+{
+    /**
+     * Fetch all available product excludes
+     *
+     * @return mixed
+     */
+    public function all()
+    {
+        return $this->createModel()->orderBy('name')->get();
+    }
+}
+============================================================
+
+
+app/Repositories/ExercisesRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+class ExercisesRepository extends Repository
+{
+    /**
+     * Get full list of exercises
+     *
+     * @param bool $withPulseMap
+     * @return mixed
+     */
+    public function all($withPulseMap = false)
+    {
+        $query = $this->createModel()->orderBy('rank');
+
+        if ($withPulseMap) {
+            $query->with('pulseMap');
+        }
+
+        return $query->get();
+    }
+}
+============================================================
+
+
+app/Repositories/FigureTypesRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+class FigureTypesRepository extends Repository
+{
+    /**
+     * Fetch full list of Constitution types
+     *
+     * @return mixed
+     */
+    public function all()
+    {
+        return $this->createModel()->orderBy('name')->get(['id', 'name', 'image']);
+    }
+}
+============================================================
+
+
+app/Repositories/NutrientsRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+class NutrientsRepository extends Repository
+{
+    public function all()
+    {
+        return $this->createModel()->has('referenceGroups.products')->get();
+    }
+}
+============================================================
+
+
+app/Repositories/OffersRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+class OffersRepository extends Repository
+{
+    public function all($group = 'offline')
+    {
+        return $this->createModel()
+            ->active()
+            ->forSite(site_id())
+            ->inGroup($group)
+            ->get(['id', 'title', 'price', 'site_id']);
+    }
+
+    public function find($key)
+    {
+        return $this->createModel()
+            ->whereId($key)
+            ->first();
+    }
+}
+============================================================
+
+
+app/Repositories/OrdersRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+use App\Order;
+
+class OrdersRepository extends Repository
+{
+    /**
+     * Find an order by id
+     *
+     * @param $key
+     * @return mixed
+     */
+    public function find($key)
+    {
+        return $this->createModel()->find($key);
+    }
+
+    /**
+     * Find an order by global order id
+     *
+     * @param $orderID
+     * @return mixed
+     */
+    public function findByOrderId($orderID)
+    {
+        return $this->createModel()->where('order_id', $orderID)->first();
+    }
+
+    /**
+     * Find an order by more then one criteria
+     *
+     * @param array $options
+     * @return $options
+     */
+    public function firstByOptions(array $options = [])
+    {
+        $query = $this->createModel()->select();
+        
+        foreach ($options as $column => $option) {
+            if (is_array($option)) {
+                $query->whereIn($column, $option);
+            } else {
+                $query->where($column, $option);
+            }
+        }
+
+        $query->orderBy('id', 'desc');
+
+        return $query->first();
+    }
+
+    public function buildOrderId()
+    {
+        $order = $this->createModel()->whereNotNull('order_id')->orderBy('order_id', 'desc')->first();
+
+        return ($order ? $order->order_id + 1 : 10000000);
+    }
+
+    /**
+     * Create a new order
+     *
+     * @param array $data
+     * @return static
+     */
+    public function create(array $data = [])
+    {
+        return $this->createModel()->create($data);
+    }
+
+    /**
+     * Update order info
+     *
+     * @param Order $order
+     * @param array $data
+     * @return Order
+     */
+    public function save(Order $order, array $data = [])
+    {
+
+        $order
+            ->fill($data)
+            ->save();
+
+        return $order;
+    }
+
+    /**
+     * Cancel order
+     * @param Order $order
+     * @return bool|null
+     * @throws \Exception
+     */
+    public function destroy(Order $order)
+    {
+        return $order->delete();
+    }
+}
+============================================================
+
+
+app/Repositories/PressureTypesRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+class PressureTypesRepository extends Repository
+{
+    public function all()
+    {
+        return $this->createModel()->orderBy('name')->get(['id', 'name']);
+    }
+}
+============================================================
+
+
+app/Repositories/QuizHintsRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+class QuizHintsRepository extends Repository
+{
+    /**
+     * Fetch full list of quiz hints
+     *
+     * @return mixed
+     */
+    public function all()
+    {
+        return $this->createModel()->orderBy('id')->get();
+    }
+
+    /**
+     * Fetch short list of quiz hints
+     *
+     * @return mixed
+     */
+    public function lists()
+    {
+        return $this->createModel()->orderBy('id')->lists('code', 'id');
+    }
+
+    public function allByUserHistory($historyId)
+    {
+        return $this->createModel()
+            ->distinct()
+            ->select('quiz_hints.*')
+            ->join('quiz_question_answers as qqa', function ($join) {
+                $join->on('qqa.hint_id', '=', 'quiz_hints.id');
+            })
+            ->join('user_history_quiz_answers AS uhqa', function ($join) {
+                $join->on('uhqa.question_id', '=', 'qqa.question_id')
+                    ->on('uhqa.answer_id', '=', 'qqa.answer_id');
+            })
+            ->where('uhqa.history_id', (int) $historyId)
+            ->get();
+    }
+}
+============================================================
+
+
+app/Repositories/QuizQuestionAnswersRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+use DB;
+
+class QuizQuestionAnswersRepository extends Repository
+{
+    /**
+     * Attach hint to answer
+     *
+     * @param $question_id
+     * @param $answer_id
+     * @param $hint_id
+     * @return static
+     */
+    public function attachHint($question_id, $answer_id, $hint_id)
+    {
+        return $this->createModel()->create(compact('question_id', 'answer_id', 'hint_id'));
+    }
+
+
+    /**
+     * Detach hint from answer
+     *
+     * @param $question_id
+     * @param $answer_id
+     * @param $hint_id
+     * @return mixed
+     */
+    public function detachHint($question_id, $answer_id, $hint_id)
+    {
+        return $this->createModel()->where(compact('question_id', 'answer_id', 'hint_id'))->delete();
+    }
+
+    /**
+     * Fetch full list of attached hints concatenated into single string
+     *
+     * @return array
+     */
+    public function concatList()
+    {
+        return $this->createModel()->get(['question_id', 'answer_id', 'hint_id'])->map(function($row) {
+            return $row->question_id . '_' . $row->answer_id . '_' . $row->hint_id;
+        })->toArray();
+    }
+}
+============================================================
+
+
+app/Repositories/QuizQuestionsRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+class QuizQuestionsRepository extends Repository
+{
+    public function all()
+    {
+        return $this->createModel()->orderBy('id')->get();
+    }
+}
+============================================================
+
+app/Repositories/SuggestionsRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+class SuggestionsRepository extends Repository
+{
+    public function all()
+    {
+        return $this->createModel()->orderBy('rank')->paginate(10);
+    }
+}
+============================================================
+
+
+app/Repositories/TargetsRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+class TargetsRepository extends Repository
+{
+    public function all($columns = ['id', 'name'])
+    {
+        return $this->createModel()->orderBy('id')->get($columns);
+    }
+}
+============================================================
+
+
+app/Repositories/UserHistoryRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+use App\User;
+use App\UserHistory;
+use Carbon\Carbon;
+
+class UserHistoryRepository extends Repository
+{
+    /**
+     * Insert new record
+     *
+     * @param User $user
+     * @param array $data
+     * @return mixed
+     */
+    public function insert(User $user, array $data)
+    {
+        return $user->history()->create($data);
+    }
+
+    /**
+     * Update record
+     *
+     * @param UserHistory $object
+     * @param array $data
+     * @return bool
+     */
+    public function update(UserHistory $object, array $data)
+    {
+        $object->fill($data)->save();
+
+        return $object;
+    }
+
+    /**
+     * Find a history record by user and date
+     *
+     * @param User $user
+     * @param Carbon $date
+     * @return mixed
+     */
+    public function find(User $user, Carbon $date)
+    {
+        return $this->createModel()->where([
+            'user_id' => $user->id,
+            'created_at' => $date->toDateString()
+        ])->first();
+    }
+
+    public function findOne($id, $userId = null)
+    {
+        $query = $this->createModel()->whereId((int)$id);
+
+        if ($userId) {
+            $query->where('user_id', (int)$userId);
+        }
+
+        return $query->first();
+    }
+
+    /**
+     * Fetch all history of user created by instructor
+     *
+     * @param User $user
+     * @param User $instructor
+     * @return mixed
+     */
+    public function createdForUserByInstructor(User $user, User $instructor)
+    {
+        return $this->createModel()->ofUser($user)->byInstructor($instructor)->get();
+    }
+}
+============================================================
+
+
+app/Repositories/UsersRepository.php
+============================================================
+<?php namespace App\Repositories;
+
+use App\Services\ImageUploader;
+use App\User;
+use Carbon\Carbon;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+
+class UsersRepository extends Repository
+{
+    /**
+     * Create new user
+     *
+     * @param array $data
+     * @param User $user
+     *
+     * @return static
+     */
+    public function createOrUpdateCustomer(array $data = [], User $user = null)
+    {
+        if (! ($user && $user->exists)) {
+            $user = $this->createModel();
+        }
+
+        $user->fill(array_merge($data, [
+            'email'      => $this->prepareEmail($data),
+            'birth_date' => $this->prepareDate($data),
+        ]));
+
+        if (isset($data['image']) && ($image = $data['image']) && $image instanceof UploadedFile) {
+            (new ImageUploader)->upload($image, function ($file) use ($user) {
+                $user->fill([
+                    'image' => $file
+                ]);
+            });
+        }
+        $user->save();
+
+        return $user;
+    }
+
+    /**
+     * Prepare email for saving
+     *
+     * @param $data
+     *
+     * @return null|string
+     */
+    private function prepareEmail($data)
+    {
+        if (isset($data['email']) && ! empty($email = trim($data['email']))) {
+            return $email;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array $data
+     *
+     * @return string
+     */
+    public function prepareDate(array $data)
+    {
+        return Carbon::parse(join('-',
+            [$data['birth_date']['year'], $data['birth_date']['month'], $data['birth_date']['day']]))->toDateString();
+    }
+
+    /**
+     * Find any user by column
+     *
+     * @param $value
+     *
+     * @param string $key
+     * @return mixed
+     */
+    public function findAny($value, $key = 'id')
+    {
+        $query = $this->createModel()->withTrashed();
+
+        $query->where($key, $value);
+
+        return $query->first($this->defaultColumns());
+    }
+
+    /**
+     * @return array
+     */
+    protected function defaultColumns()
+    {
+        return ['id', 'name', 'email', 'phone', 'birth_date', 'image', 'deleted_at'];
+    }
+
+    /**
+     * Find user by name
+     *
+     * @param $value
+     *
+     * @param string $key
+     * @return mixed
+     */
+    public function find($value, $key = 'id')
+    {
+        $query = $this->createModel()->member();
+
+        $query->where($key, $value);
+
+        return $query->first($this->defaultColumns());
+    }
+
+    /**
+     * Search customer by name, email, etc...
+     *
+     * @param $value
+     * @param string $key
+     * @return mixed
+     */
+    public function search($value, $key = 'name')
+    {
+        return $this->createModel()->where($key, 'LIKE', "%{$value}%")->get($this->defaultColumns());
+    }
+
+    /**
+     * @param $image
+     *
+     * @return string
+     */
+    protected function getTargetFileName($image)
+    {
+        $hash = md5_file($image->getRealPath());
+        $ext = $image->getClientOriginalExtension();
+        $file = "{$hash}.{$ext}";
+
+        return $file;
+    }
+}
+============================================================
+
+
+app/Services/BasalMetabolism.php
+============================================================
+<?php namespace App\Services;
+
+class BasalMetabolism
+{
+    /**
+     * Calculate basal metabolism rate
+     * based on Harris-Benedict formula
+     *
+     * @param $weight
+     * @param $height
+     * @param $age
+     * @return int
+     */
+    public function calculate($weight, $height, $age)
+    {
+        return (int) round(655 + (9.56 * $weight) + (1.85 * $this->toMeters($height)) - (4.68 * $age));
+    }
+
+    private function toMeters($height)
+    {
+        return round(($height / 100), 2);
+    }
+}
+============================================================
+
+
+app/Services/CardioReactionDetector.php
+============================================================
+<?php namespace App\Services;
+
+use App\Services\Contracts\CardioReactionDetector as DetectorContract;
+use App\Services\Responses\CardioReaction;
+
+class CardioReactionDetector implements DetectorContract
+{
+    /**
+     * Detect pressure type
+     *
+     * @param $before
+     * @param $after
+     * @return int
+     * @throws \Exception
+     */
+    public function detect($before, $after = null)
+    {
+        if ($before >= 140) {
+            return new CardioReaction(self::R_HIPERTONIE . '-' . self::R_ATTENTION);
+        } else {
+            $this->validateArguments($before, $after);
+
+            $before = $this->detectBeforeValue($before);
+
+            $after = $this->detectAfterValue($after);
+
+            return new CardioReaction($before . '-' . $after);
+        }
+    }
+
+    /**
+     * @param $before
+     * @return string
+     */
+    protected function detectBeforeValue($before)
+    {
+        if ($before < 110) {
+            return self::R_HIPOTONIE;
+        }
+
+        return self::R_NORMOTONIE;
+    }
+
+    /**
+     * @param $after
+     * @return string
+     */
+    protected function detectAfterValue($after)
+    {
+        if ($after <= 130) {
+            return self::R_NORMOTONIE;
+        }
+
+        return self::R_HIPERTONIE;
+    }
+
+    /**
+     * @param $before
+     * @param $after
+     * @throws \Exception
+     */
+    protected function validateArguments($before, $after)
+    {
+        if (! ($before && $after)) {
+            throw new \Exception('Missing before or after load pressure');
+        }
+    }
+}
+============================================================
+
+
+app/Services/Contracts/CardioReactionDetector.php
+============================================================
+<?php
+namespace App\Services\Contracts;
+
+interface CardioReactionDetector
+{
+    const R_NORMOTONIE = 'normotonie';
+    const R_HIPOTONIE = 'hipotonie';
+    const R_HIPERTONIE = 'hipertonie';
+    const R_ATTENTION = 'attention';
+
+    /**
+     * Detect pressure type
+     *
+     * @param $systolic
+     * @param $diastolic
+     * @return int
+     */
+    public function detect($systolic, $diastolic);
+}
+============================================================
+
+
+app/Services/Contracts/QuizMap.php
+============================================================
+<?php namespace App\Services\Contracts;
+
+interface QuizMap
+{
+    /**
+     * Sync answers with question and hints
+     *
+     * @param $questionId
+     * @param $answerId
+     * @param $hintId
+     * @param $value
+     * @return mixed
+     */
+    public function sync($questionId, $answerId, $hintId, $value);
+}
+============================================================
+
+
+app/Services/CreateOrder.php
+============================================================
+<?php namespace App\Services;
+
+use App\Order;
+use App\Repositories\OffersRepository;
+use App\Repositories\OrdersRepository;
+use App\Repositories\UserHistoryRepository;
+use App\Services\Gateway\Qiwi;
+use App\Services\Gateway\VictoriaBank;
+use App\User;
+
+class CreateOrder
+{
+    protected $offer;
+    /**
+     * @var OrdersRepository
+     */
+    protected $orders;
+
+    /**
+     * @var OffersRepository
+     */
+    protected $offers;
+
+    /**
+     * @var UserHistoryRepository
+     */
+    private $records;
+
+    public function __construct(OrdersRepository $orders, OffersRepository $offers, UserHistoryRepository $records)
+    {
+        $this->orders = $orders;
+        $this->offers = $offers;
+        $this->records = $records;
+    }
+
+    /**
+     * @param User $user
+     * @param array $data
+     * @return mixed|static
+     * @throws \Exception
+     */
+    public function create(User $user, array $data)
+    {
+        $data = $this->prepareOrderData($data);
+
+        $this->validateHistoryOwner($user, $data);
+
+        $order = $this->createOrder($data, function ($order) {
+            switch ($order->gateway) {
+                case Order::GATEWAY_QIWI:
+                    return (new Qiwi($order))->prepare();
+
+                case Order::GATEWAY_VB:
+                    return (new VictoriaBank($order))->prepare();
+                    break;
+                case Order::GATEWAY_CASH:
+                    return $order;
+                    break;
+            }
+
+            throw new \Exception('Unknown gateway');
+        });
+
+        return $order;
+    }
+
+    public function update($order, $data)
+    {
+        $data = $this->prepareOrderData($data);
+
+        return $this->orders->save($order, $data);
+    }
+
+    /**
+     * @param array $data
+     * @return array
+     */
+    protected function prepareOrderData(array $data)
+    {
+        $this->offer = $this->offers->find($data['offer']);
+
+        $discount = 0;
+        if (isset($data['discount'])) {
+            $discount = (int) $data['discount'];
+        }
+
+        $status = Order::STATUS_PENDING;
+        if (isset($data['status'])) {
+            $status = $data['status'];
+        }
+
+        return [
+            'user_history_id' => $data['history'],
+            'offer_id'        => $this->offer->id,
+            'gateway'         => $data['gateway'],
+            'period'          => $this->offer->period,
+            'discount'        => $discount,
+            'amount'          => $discount ? $this->getPriceWithDiscount($this->offer->price, $discount) : $this->offer->price,
+            'status'          => $status
+        ];
+    }
+
+    protected function getPriceWithDiscount($price, $discount)
+    {
+        return (new Discount($price, $discount))->calculate();
+    }
+
+    /**
+     * @param User $user
+     * @param array $data
+     * @throws \Exception
+     */
+    protected function validateHistoryOwner(User $user, array $data)
+    {
+        if (! $history = $this->records->findOne($data['user_history_id'], $user->id)) {
+            throw new \Exception("History not found");
+        }
+    }
+
+    protected function createOrder($data, \Closure $callback = null)
+    {
+        $order = $this->orders->create($data);
+
+        if ($callback) {
+            return call_user_func_array($callback, [$order]);
+        }
+
+        return $order;
+    }
+}
+============================================================
+
+
+app/Services/Discount.php
+============================================================
+<?php namespace App\Services;
+
+class Discount
+{
+    private $price;
+    private $discount;
+
+    public function __construct($price, $discount)
+    {
+        $this->price = $price;
+        $this->discount = $discount;
+    }
+
+    public function calculate()
+    {
+        return $this->price * ((100 - $this->discount) / 100);
+    }
+}
+============================================================
+
+
+app/Services/FigureType.php
+============================================================
+<?php namespace App\Services;
+
+class FigureType
+{
+    const TYPE_CLEPSIDRA = 'clepsidra';
+
+    const TYPE_PEAR = 'pear';
+
+    const TYPE_APPLE = 'apple';
+
+    /**
+     * Detect figure type
+     *
+     * @param $buttocks
+     * @param $shoulders
+     * @return string
+     */
+    public function detect($buttocks, $shoulders)
+    {
+        if ($buttocks - $shoulders >= 6) {
+            return static::TYPE_PEAR;
+        }
+
+        if ($shoulders - $buttocks >= 6) {
+            return static::TYPE_APPLE;
+        }
+
+        return static::TYPE_CLEPSIDRA;
+    }
+}
+============================================================
+
+
+app/Services/Gateway/AbstractGateway.php
+============================================================
+<?php namespace App\Services\Gateway;
+
+use App\Order;
+use App\Repositories\OrdersRepository;
+
+class AbstractGateway
+{
+    /**
+     * @var Order
+     */
+    protected $order;
+
+    /**
+     * @var OrdersRepository
+     */
+    protected $orders;
+
+    /**
+     * Qiwi constructor.
+     * @param Order $order
+     */
+    public function __construct(Order $order)
+    {
+        $this->order = $order;
+        $this->orders = app(OrdersRepository::class);
+    }
+}
+============================================================
+
+
+app/Services/Gateway/Qiwi.php
+============================================================
+<?php namespace App\Services\Gateway;
+
+use App\Order;
+use App\Services\Contracts\Gateway;
+use Carbon\Carbon;
+
+class Qiwi extends AbstractGateway implements Gateway
+{
+    /**
+     * Prepare the order for processing
+     *
+     * @return Order
+     */
+    public function prepare()
+    {
+        return $this->orders->save($this->order, [
+            'order_id'   => $this->buildId(),
+            'expires_at' => $this->buildExpiresAt()
+        ]);
+    }
+
+    /**
+     * @return int
+     */
+    protected function buildId()
+    {
+        return $this->orders->buildOrderId();
+    }
+
+    /**
+     * @return mixed
+     */
+    protected function buildExpiresAt()
+    {
+        return Carbon::now()->addHours(72);
+    }
+}
+============================================================
+
+
+app/Services/Gateway/VictoriaBank.php
+============================================================
+<?php namespace App\Services\Gateway;
+
+use App\Order;
+use App\Services\Contracts\Gateway;
+
+class VictoriaBank extends AbstractGateway implements Gateway
+{
+    /**
+     * Prepare the order for processing
+     *
+     * @return Order
+     */
+    public function prepare()
+    {
+        return $this->order;
+    }
+}
+============================================================
+
+
+app/Services/HistoryCreator.php
+============================================================
+<?php namespace App\Services;
+
+use App\Repositories\OrdersRepository;
+use Auth;
+use App\User;
+use Carbon\Carbon;
+use App\UserHistory;
+use App\Repositories\UserHistoryRepository;
+
+class HistoryCreator
+{
+    /**
+     * @var UserHistoryRepository
+     */
+    private $historyRepository;
+
+    /**
+     * HistoryCreator constructor.
+     *
+     * @param UserHistoryRepository $historyRepository
+     */
+    public function __construct(UserHistoryRepository $historyRepository)
+    {
+        $this->historyRepository = $historyRepository;
+    }
+
+    public function persist(User $user, UserHistory $record, array $data)
+    {
+        /**
+         * @var $allergies
+         * @var $diseases
+         * @var $excludes
+         * @var $quiz
+         */
+        extract(array_only($data, ['diseases', 'allergies', 'excludes', 'quiz']));
+
+        $data = $this->prepareData($data);
+
+        if ($record && $record->exists) {
+            $object = $this->historyRepository->update($record, $data);
+        } else {
+            $object = $this->historyRepository->insert($user, $data);
+        }
+
+        $object->diseases()->sync($diseases);
+        $object->allergies()->sync($allergies);
+        $object->excludes()->sync($excludes);
+
+        foreach ($quiz as $question_id => $answer_id) {
+            try {
+                $object->quizPairs()->create(compact('question_id', 'answer_id'));
+            } catch (\Exception $e) {
+                $object->quizPairs()->where(compact('question_id'))->update(compact('answer_id'));
+            }
+        }
+
+        return $object;
+    }
+
+    private function handleMenstrualData($data)
+    {
+        if (isset($data['menstrual_cycle']['menopause'])) {
+            if ($data['menstrual_cycle']['menopause']) {
+                $data['menstrual_cycle'] = ['menopause' => true];
+            } else {
+                unset($data['menstrual_cycle']['menopause']);
+            }
+        }
+
+        return $data;
+    }
+
+    private function handleCreatedDate($data)
+    {
+        foreach (['created_at', 'purchased_at'] as $key) {
+            if (array_key_exists($key, $data)) {
+                $data[$key] = Carbon::createFromDate(
+                    $data[$key]['year'],
+                    $data[$key]['month'],
+                    $data[$key]['day']
+                );
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * @param array $data
+     *
+     * @return array
+     */
+    public function prepareData(array $data)
+    {
+        $data = $this->handleMenstrualData($data);
+
+        $data = $this->handleCreatedDate($data);
+
+        $data = $this->allowOnlyFillable($data);
+
+        $data = $this->resetStatus($data);
+
+        $data = $this->setDefaultPulse($data);
+
+        return $data;
+    }
+
+    /**
+     * @param array $data
+     * @return array
+     */
+    private function setDefaultPulse(array $data)
+    {
+        if (! array_has($data, 'pulse3') || ! (int) $data['pulse3']) {
+            $data['pulse3'] = 120;
+
+            return $data;
+        }
+
+        return $data;
+    }
+
+    /**
+     * @param array $data
+     * @return array
+     */
+    private function allowOnlyFillable(array $data)
+    {
+        $data = array_only($data, (new UserHistory)->getFillable());
+
+        return $data;
+    }
+
+    /**
+     * @param array $data
+     * @return array
+     */
+    private function resetStatus(array $data)
+    {
+        $data = array_merge($data, [
+            'instructor_id' => auth()->check() ? auth()->user()->id : null,
+            'status'        => UserHistory::STATUS_PENDING,
+            'document'      => null
+        ]);
+
+        return $data;
+    }
+}
+============================================================
+
+
+app/Services/HtmlBuilder.php
+============================================================
+<?php namespace App\Services;
+
+use App\Week\Manager;
+use App\User;
+use App\UserHistory;
+use BMICalculator;
+use App\Traits\DocumentBuilder;
+use App\Repositories\ExercisesRepository;
+use App\Repositories\NutrientsRepository;
+use App\Repositories\QuizHintsRepository;
+use App\Repositories\SuggestionsRepository;
+use App\Services\Contracts\HtmlBuilder as DocumentBuilderContract;
+
+class HtmlBuilder implements DocumentBuilderContract
+{
+    protected $metabolismCalculator;
+
+    protected $weekManager;
+
+    /**
+     * @var QuizHintsRepository
+     */
+    private $hintsRepository;
+
+    /**
+     * @var NutrientsRepository
+     */
+    private $nutrientsRepository;
+
+    /**
+     * @var ExercisesRepository
+     */
+    private $exercisesRepository;
+
+    /**
+     * @var SuggestionsRepository
+     */
+    private $suggestionsRepository;
+
+    /**
+     * Create a new command instance.
+     *
+     * @param QuizHintsRepository   $hintsRepository
+     * @param NutrientsRepository   $nutrientsRepository
+     * @param ExercisesRepository   $exercisesRepository
+     * @param SuggestionsRepository $suggestionsRepository
+     */
+    public function __construct(
+        QuizHintsRepository $hintsRepository,
+        NutrientsRepository $nutrientsRepository,
+        ExercisesRepository $exercisesRepository,
+        SuggestionsRepository $suggestionsRepository
+    ) {
+        $this->hintsRepository = $hintsRepository;
+        $this->nutrientsRepository = $nutrientsRepository;
+        $this->exercisesRepository = $exercisesRepository;
+        $this->suggestionsRepository = $suggestionsRepository;
+    }
+
+    /**
+     * Build the document
+     *
+     * @param User        $user
+     * @param UserHistory $record
+     *
+     * @return $this
+     */
+    public function build(User $user, UserHistory $record)
+    {
+        $maxWeight = $this->recommendedWeight($user, $record);
+
+        list($estimatedTime, $estimatedTimeMax, $estimatedTimeAnabolic, $estimatedTimeMaxAnabolic)
+            = $this->estimateProgress($record, $maxWeight);
+
+        $weekManager = $this->weekManager()->setRecord($record);
+
+        return view('dompdf.template')->with([
+            'user'                     => $user,
+            'record'                   => $record,
+            'bmi'                      => $this->calculateBMI($record),
+            'diseases'                 => $this->fetchDiseases($record),
+            'allergies'                => $this->fetchAllergies($record),
+            'excludes'                 => $this->fetchFoodExcludes($record),
+            'quizHints'                => $this->fetchQuizSuggestions($record),
+            'nutrients'                => $this->fetchNutrients(),
+            'diseasesNotes'            => $this->fetchDiseasesNotes($record, 0),
+            'deferDiseasesNotes'       => $this->fetchDiseasesNotes($record, 1),
+            'exercises'                => $this->fetchExercises(),
+            'suggestions'              => $this->fetchSuggestions(),
+            'maxWeight'                => $maxWeight,
+            'estimatedTime'            => join('-', $estimatedTime),
+            'estimatedTimeMax'         => join('-', $estimatedTimeMax),
+            'estimatedTimeAnabolic'    => join('-', $estimatedTimeAnabolic),
+            'estimatedTimeMaxAnabolic' => join('-', $estimatedTimeMaxAnabolic),
+            'metabolism'               => [
+                'current'     => $this->metabolismCalculator()->calculate(
+                    $record->current_weight, $record->height, $user->age()
+                ),
+                'target'      => $this->metabolismCalculator()->calculate(
+                    $record->target_weight, $record->height, $user->age()
+                ),
+                'recommended' => $this->metabolismCalculator()->calculate($maxWeight, $record->height, $user->age())
+            ],
+            'weekDays'                 => $weekManager->getWeekDays(),
+            'schedule'                 => $weekManager->build($record->schedule)
+        ])->render();
+    }
+
+    /**
+     * @param UserHistory $record
+     *
+     * @return mixed
+     */
+    private function fetchDiseasesNotes(UserHistory $record, $defer = false)
+    {
+        $diseases = $record->diseases()->defer($defer)->get()->map(function ($item) {
+            if (! $item->hasNote() && ($parent = $item->parent) && $parent->hasNote()) {
+                $item->note = $parent->note;
+            }
+            
+            return $item;
+        })->unique('note');
+
+        return $diseases;
+    }
+
+    /**
+     * @param UserHistory $record
+     * @param             $maxWeight
+     *
+     * @return array
+     */
+    private function estimateProgress(UserHistory $record, $maxWeight)
+    {
+        $estimator = (new ProgressTimeEstimator)->estimate($record->current_weight, $record->target_weight);
+        $estimatorMax = (new ProgressTimeEstimator)->estimate($record->current_weight, $maxWeight);
+        $estimatedTime = $estimator->getValues();
+        $estimatedTimeAnabolic = $estimator->getAnabolicValues();
+        $estimatedTimeMax = $estimatorMax->getValues();
+        $estimatedTimeMaxAnabolic = $estimatorMax->getAnabolicValues();
+
+        return [$estimatedTime, $estimatedTimeMax, $estimatedTimeAnabolic, $estimatedTimeMaxAnabolic];
+    }
+
+    /**
+     * @param User        $user
+     * @param UserHistory $record
+     *
+     * @return float
+     */
+    private function recommendedWeight(User $user, UserHistory $record)
+    {
+        return (new MaxWeight)->calculate($record->height, $user->age());
+    }
+
+    /**
+     * @return mixed
+     */
+    private function fetchNutrients()
+    {
+        return $this->nutrientsRepository->all();
+    }
+
+    /**
+     * @return mixed
+     */
+    private function fetchExercises()
+    {
+        return $this->exercisesRepository->all(true);
+    }
+
+    /**
+     * @return mixed
+     */
+    private function fetchSuggestions()
+    {
+        return $this->suggestionsRepository->all();
+    }
+
+    /**
+     * @param UserHistory $record
+     *
+     * @return mixed
+     */
+    private function fetchQuizSuggestions(UserHistory $record)
+    {
+        return $this->hintsRepository->allByUserHistory($record->id);
+    }
+
+    /**
+     * @return BasalMetabolism
+     */
+    private function metabolismCalculator()
+    {
+        if (null == $this->metabolismCalculator) {
+            $this->metabolismCalculator = new BasalMetabolism;
+        }
+
+        return $this->metabolismCalculator;
+    }
+
+    /**
+     * @param UserHistory $record
+     *
+     * @return mixed
+     */
+    private function fetchDiseases(UserHistory $record)
+    {
+        return $record->diseases->lists('id')->toArray();
+    }
+
+    /**
+     * @param UserHistory $record
+     *
+     * @return mixed
+     */
+    private function fetchAllergies(UserHistory $record)
+    {
+        return $record->allergies->lists('id')->toArray();
+    }
+
+    /**
+     * @param UserHistory $record
+     *
+     * @return mixed
+     */
+    private function fetchFoodExcludes(UserHistory $record)
+    {
+        return $record->excludes->lists('id')->toArray();
+    }
+
+    /**
+     * @param UserHistory $record
+     *
+     * @return mixed
+     */
+    private function calculateBMI(UserHistory $record)
+    {
+        return BMICalculator::driver('female')->calculate($record->height,
+            $record->current_weight);
+    }
+
+    private function weekManager()
+    {
+        if (null === $this->weekManager) {
+            $this->weekManager = new Manager(app('App\Services\Contracts\RecipeFinder'));
+        }
+
+        return $this->weekManager;
+    }
+}
+============================================================
+
+
+app/Services/MaxWeight.php
+============================================================
+<?php namespace App\Services;
+
+use App\BMICalculator\ValueByAge;
+
+class MaxWeight
+{
+    public function calculate($height, $age)
+    {
+        return ceil(pow($this->toMeters($height), 2) * (new ValueByAge)->get($age));
+    }
+
+    private function toMeters($height)
+    {
+        return round($height/100, 2);
+    }
+}
+============================================================
+
+
+app/Services/MenstrualCycle.php
+============================================================
+<?php namespace App\Services;
+
+use Carbon\Carbon;
+
+class MenstrualCycle
+{
+    const TYPE_CARBON = 'Carbon';
+
+    const TYPE_STRING = 'String';
+
+    protected $returnType = self::TYPE_CARBON;
+
+    /**
+     * Parse the initial data
+     *
+     * @param        $dateStart
+     * @param        $duration
+     * @param Carbon $baseDate
+     * @return array
+     */
+    public function parse($dateStart, $duration, Carbon $baseDate)
+    {
+        $duration = $this->normalizeDuration($duration);
+
+        $firstDate = Carbon::create($baseDate->year, $baseDate->month, $dateStart);
+
+        if ($dateStart > $baseDate->day) {
+            $firstDate->subMonth();
+        }
+        $firstDate->addDays($duration);
+
+        $p1 = Carbon::parse($firstDate)->addDays(3);
+        $p2 = Carbon::parse($firstDate)->addDays(13);
+        $p3 = Carbon::parse($firstDate)->addDays($duration);
+
+        return $this->toType([
+            $firstDate,
+            $p1,
+            $p2,
+            $p3
+        ]);
+    }
+
+    private function toType($dates)
+    {
+        if (static::TYPE_STRING == $this->returnType) {
+            return array_map([$this, 'toDateString'], $dates);
+        }
+
+        return $dates;
+    }
+
+    public function setReturnType($type)
+    {
+        if (in_array($type, [static::TYPE_CARBON, static::TYPE_STRING])) {
+            $this->returnType = $type;
+        }
+
+        return $this;
+    }
+
+    private function toDateString($data)
+    {
+        return $data->toDateString();
+    }
+
+    private function normalizeDuration($duration)
+    {
+        if (in_array($duration, [-1, -2])) {
+            return 28;
+        }
+
+        return $duration;
+    }
+}
+============================================================
+
+
+app/Services/PdfBuilder.php
+============================================================
+<?php namespace App\Services;
+
+use App\Services\Contracts\PdfBuilder as PdfBuilderContract;
+use App\User;
+use App\UserHistory;
+use Artisan;
+use Illuminate\Filesystem\Filesystem;
+
+/**
+ * Class PdfBuilder
+ *
+ * @package App\Services
+ */
+class PdfBuilder implements PdfBuilderContract
+{
+    /**
+     * @var Filesystem
+     */
+    private $filesystem;
+
+
+    /**
+     * PdfBuilder constructor.
+     *
+     * @param Filesystem $filesystem
+     */
+    public function __construct(Filesystem $filesystem)
+    {
+        $this->filesystem = $filesystem;
+    }
+
+    /**
+     * @param string $htmlDocument
+     * @return string
+     */
+    public function build($htmlDocument)
+    {
+        $htmlFile = tempnam($tmpDir = sys_get_temp_dir(), '_html');
+        $pdfFile = tempnam($tmpDir, '_pdf');
+
+        $this->filesystem->put(
+            $htmlFile,
+            $htmlDocument
+        );
+
+        $this->convert($htmlFile, $pdfFile);
+
+        return $this->filesystem->get($pdfFile);
+    }
+
+    private function convert($in, $out)
+    {
+        return Artisan::call("html2pdf", ['in' => $in, 'out' => $out]);
+    }
+}
+============================================================
+
+
+app/Services/ProgressTimeEstimator/EstimatedTime.php
+============================================================
+<?php namespace App\Services\ProgressTimeEstimator;
+
+class EstimatedTime
+{
+    private $min;
+    private $max;
+
+    public function __construct($min, $max)
+    {
+        $this->min = (int) $min;
+        $this->max = (int) $max;
+    }
+
+    public function getValues()
+    {
+        return ($this->min == $this->max ? [$this->max] : [$this->min, $this->max]);
+    }
+
+    public function getAnabolicValues()
+    {
+        $periods = $this->decrementedValues();
+
+        return $this->zeroLessValues($periods);
+    }
+
+    /**
+     * @return array
+     */
+    private function decrementedValues()
+    {
+        return array_map(function ($period) {
+            return max($period - 1, 0);
+        }, [$this->min, $this->max]);
+    }
+
+    /**
+     * @param $periods
+     * @return array
+     */
+    private function zeroLessValues($periods)
+    {
+        return array_filter($periods, function ($period) {
+            return $period > 0;
+        });
+    }
+}
+============================================================
+
+
+app/Services/ProgressTimeEstimator.php
+============================================================
+<?php namespace App\Services;
+
+use App\Services\ProgressTimeEstimator\EstimatedTime;
+
+class ProgressTimeEstimator
+{
+    const PROGRESS_KG_PER_MONTH = 3;
+
+    /**
+     * Estimate in how many months you can lose weight
+     * from current to recommended one
+     *
+     * @param $currentWeight
+     * @param $recommendedWeight
+     * @return float
+     */
+    public function estimate($currentWeight, $recommendedWeight)
+    {
+        $time = max(0, (($currentWeight - $recommendedWeight) / static::PROGRESS_KG_PER_MONTH));
+        $min = floor($time);
+        $max = ceil($time);
+
+        return new EstimatedTime($min, $max);
+    }
+}
+============================================================
+
+
+app/Services/PulseMapper.php
+============================================================
+<?php namespace App\Services;
+
+use App\Exercise;
+
+class PulseMapper
+{
+    /**
+     * @var Exercise $exercise
+     */
+    private $exercise;
+
+    private $map;
+
+    /**
+     * @param Exercise $exercise
+     * @param          $pulse
+     * @return
+     * @throws \Exception
+     */
+    public function findMax(Exercise $exercise, $pulse)
+    {
+        $this->exercise = $exercise;
+
+        $map = $this->getMap();
+
+        $pulse = $this->normalize($pulse);
+
+        return $map->getAttribute("p_{$pulse}");
+    }
+
+    private function getMap()
+    {
+        if (null === $this->map || $this->map->exercise_id !== $this->exercise->id) {
+            $this->map = $this->exercise->pulseMap;
+        }
+
+        return $this->map;
+    }
+
+    private function normalize($pulse)
+    {
+        $pulse = round($pulse / 10, 0) * 10;
+
+        return $pulse;
+    }
+}
+============================================================
+
+
+app/Services/RecipeFinder.php
+============================================================
+<?php namespace App\Services;
+
+use App\Recipe;
+use App\Recipe\Params;
+use App\Services\Contracts\RecipeFinder as RecipeFinderContract;
+use App\Traits\FindRecipes;
+
+class RecipeFinder implements RecipeFinderContract
+{
+    use FindRecipes;
+
+    protected $query;
+
+    protected $params;
+
+    /**
+     * @param Params $params
+     * @return mixed
+     */
+    public function find(Params $params)
+    {
+        $this->params = $params;
+
+        $this->createQuery()
+            ->filterByNutrient()
+            ->filterByEatingNumber()
+            ->filterByPlacement()
+            ->filterBySnack()
+            ->filterBySeason()
+            ->filterByTarget()
+            ->excludeDiseases()
+            ->excludeAllergies()
+            ->excludeFood()
+            ->makeListUnique()
+            ->randomizeResults();
+
+        return $this->query->first();
+    }
+
+    /**
+     * @return $this
+     */
+    private function makeListUnique()
+    {
+        if (! empty($disables = $this->params->getDisabled())) {
+            $this->query->whereNotIn('recipes.id', (array) $disables);
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return $this
+     */
+    private function filterBySnack()
+    {
+        $this->query->where('snack', (int) $this->params->isSnack());
+
+        return $this;
+    }
+
+    /**
+     * Some products recommended for use before or after workout
+     *
+     * @return $this
+     */
+    private function filterByPlacement()
+    {
+        if ($this->params->isSnack()) {
+            return $this;
+        }
+
+        if ($placement = $this->params->getPlacement()) {
+            $this->query = $this->query->whereRaw("(placement IS NULL OR placement='" . $placement . "')");
+        }
+
+        return $this;
+    }
+
+    /**
+     * Some products can be used only at specific num of eating (morning, day, evening, etc...)
+     *
+     * @return $this
+     */
+    private function filterByEatingNumber()
+    {
+        if ($this->params->isSnack()) {
+            return $this;
+        }
+
+        if ($num = $this->params->getEatingNum()) {
+            $target = $this->params->forTarget();
+
+            /**
+             * @hack: since in backend there is no way to mark eating num bigger then 3
+             * just set it to max available (3)
+             */
+            $num = min($num, 3);
+
+            if ($target && 'weight-gain' == $target) {
+                $this->query = $this->query->whereRaw("(eating_gain is NULL OR FIND_IN_SET('{$num}', eating_gain))");
+            } else {
+                $this->query = $this->query->whereRaw("(eating is NULL OR FIND_IN_SET('{$num}', eating))");
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return $this
+     */
+    private function filterByNutrient()
+    {
+        $this->query->join('nutrients', function ($join) {
+            $join->on('nutrients.id', '=', 'recipes.nutrient_id')
+                ->where('nutrients.slug', '=', $this->params->getNutrient());
+        });
+
+        return $this;
+    }
+
+    private function filterByTarget()
+    {
+        if ($target = $this->params->forTarget()) {
+            $this->query->whereRaw("(targets is NULL OR FIND_IN_SET('{$target}', targets))");
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return mixed
+     */
+    public function getQuery()
+    {
+        return [
+            $this->query->toSql(),
+            $this->query->getBindings()
+        ];
+    }
+}
+============================================================
+
+
+app/Services/Responses/CardioReaction.php
+============================================================
+<?php namespace App\Services\Responses;
+
+use App\Services\Contracts\CardioReactionDetector AS Detector;
+
+class CardioReaction
+{
+    private $value;
+
+    public function __construct($value)
+    {
+        $this->value = $value;
+    }
+
+    public function id()
+    {
+        $map = [
+            1 => Detector::R_NORMOTONIE . '-' . Detector::R_NORMOTONIE,
+            2 => Detector::R_HIPOTONIE . '-' . Detector::R_NORMOTONIE,
+            3 => Detector::R_HIPOTONIE . '-' . Detector::R_HIPERTONIE,
+            4 => Detector::R_HIPERTONIE . '-' . Detector::R_ATTENTION,
+            5 => Detector::R_NORMOTONIE . '-' . Detector::R_HIPERTONIE
+        ];
+
+        if (false == ($id = array_search($this->value, $map, true))) {
+            throw new \Exception(sprintf('Can not resolve %s', $this->value));
+        }
+
+        return $id;
+    }
+
+    public function toString()
+    {
+        return (string) $this;
+    }
+
+    public function __toString()
+    {
+        return $this->value;
+    }
+}
+============================================================
+
+
+app/Traits/FindRecipes.php
+============================================================
+<?php namespace App\Traits;
+
+use App\Recipe;
+use App\RecipeAllergiesExclude;
+use App\RecipeDiseasesExclude;
+use App\RecipeFoodExclude;
+
+trait FindRecipes
+{
+    /**
+     * @return $this
+     */
+    protected function createQuery()
+    {
+        $this->query = Recipe::select('recipes.*')->with('nutrient');
+
+        return $this;
+    }
+
+    /**
+     * @return $this
+     */
+    protected function filterBySeason()
+    {
+        $this->query->whereRaw("(season IS NULL OR season LIKE '%" . $this->getSeason() . "%')");
+
+        return $this;
+    }
+
+    protected function getSeason()
+    {
+        $seasons = [
+            0 => 'winter',
+            1 => 'spring',
+            2 => 'summer',
+            3 => 'autumn'
+        ];
+
+        return $seasons[floor(date('n') / 3) % 4];
+    }
+
+    protected function excludeDiseases()
+    {
+        if (! empty($diseases = $this->params->getDiseases()) && ($recipes = $this->getExcludesByDiseases($diseases))) {
+            $this->query->whereNotIn('recipes.id', $recipes);
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return $this
+     */
+    protected function excludeAllergies()
+    {
+        if (! empty($allergies = $this->params->getAllergies()) && ($recipes = $this->getExcludesByAllergies($allergies))) {
+            $this->query->whereNotIn('recipes.id', $recipes);
+        }
+
+        return $this;
+    }
+
+
+    protected function excludeFood()
+    {
+        if (! empty($excludes = $this->params->getFoodExcludes()) && ($recipes = $this->getExcludesByNotConsumingFood($excludes))) {
+            $this->query->whereNotIn('recipes.id', $recipes);
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return $this
+     */
+    protected function randomizeResults()
+    {
+        $this->query->orderBy(\DB::raw('RAND()'));
+
+        return $this;
+    }
+
+    /**
+     * @param $excludes
+     * @return array
+     */
+    protected function getExcludesByNotConsumingFood($excludes)
+    {
+        return RecipeFoodExclude::whereIn('food_excludes_id', $excludes)->lists('recipe_id')->toArray();
+    }
+
+    /**
+     * @param $diseases
+     * @return array
+     */
+    protected function getExcludesByDiseases($diseases)
+    {
+        return RecipeDiseasesExclude::whereIn('disease_id', $diseases)->lists('recipe_id')->toArray();
+    }
+
+    /**
+     * @param $allergies
+     * @return array
+     */
+    protected function getExcludesByAllergies($allergies)
+    {
+        return RecipeAllergiesExclude::whereIn('allergy_id', $allergies)->lists('recipe_id')->toArray();
+    }
+}
+============================================================
+
+
+app/Week/Manager.php
+============================================================
+<?php namespace App\Week;
+
+use App\Convert\TimeToMins;
+use App\Nutrient;
+use App\Recipe;
+use App\Recipe\Params;
+use App\Services\Contracts\RecipeFinder;
+
+class Manager
+{
+    private $schedule;
+
+    private $weekDays = ['mon', 'tue', 'wen', 'thu', 'fri', 'sat', 'sun'];
+
+    private $record;
+
+    /**
+     * @var
+     */
+    private $recipeFinder;
+
+    public function __construct(RecipeFinder $recipeFinder)
+    {
+        $this->recipeFinder = $recipeFinder;
+    }
+
+    /**
+     * @param $schedule
+     * @return array
+     */
+    public function build($schedule)
+    {
+        $this->schedule = $schedule;
+
+        $schedule = [];
+
+        $diseases = $this->record->diseases->lists('id')->toArray();
+        $allergies = $this->record->allergies->lists('id')->toArray();
+        $excludes = $this->record->excludes->lists('id')->toArray();
+
+        $params = new Params();
+        $params->setForTarget($target = $this->record->target->slug);
+
+
+        foreach ($this->weekDays as $dayNum => $day) {
+            $disabled = [];
+            $type = $this->schedule[$day]['type'];
+
+            $nutrition = [];
+            $workoutTime = null;
+            if (in_array($type, ['activity', 'rest'])) {
+                if ('activity' == $type) {
+                    $workoutTime = $this->schedule[$day]['time'];
+                    $dailySchedule = $this->loadScheduler()->schedule($workoutTime);
+                } else {
+                    $dailySchedule = $this->restScheduler()->schedule();
+                }
+
+                $eatingNum = 0;
+                foreach ($dailySchedule as $hour => $nutrient) {
+                    if ('water' == $nutrient) {
+                        continue;
+                    }
+
+                    list($eating, $nutrient) = explode(':', $nutrient);
+
+                    $isSnack = ('snack' == $eating);
+                    if ('main' == $eating) {
+                        $eatingNum++;
+                    }
+
+                    $params->setNutrient($nutrient)
+                        ->setSnack($isSnack)
+                        ->setEatingNum($eatingNum)
+                        ->setDiseases($diseases)
+                        ->setAllergies($allergies)
+                        ->setFoodExcludes($excludes)
+                        ->setDisabled($disabled);
+
+                    $placement = null;
+                    if ('activity' == $type && ! $isSnack) {
+                        $hourInMins = (new TimeToMins($hour))->convert();
+                        $workoutTimeInMins = (new TimeToMins($workoutTime))->convert();
+
+                        $placement = $hourInMins == $workoutTime ? null : ($hourInMins > $workoutTimeInMins ? 'after' : 'before');
+                    }
+                    $params->setPlacement($placement);
+
+                    $recipe = $this->recipeFinder->find($params);
+
+                    if (! $recipe) {
+                        $recipe = new Recipe([
+                            'nutrient'  => new Nutrient(['name' => $nutrient]),
+                            'name'      => 'Not found (' . $params->debug() . ')',
+                            'quantity'  => 0,
+                            'season'    => null,
+                            'snack'     => $isSnack,
+                            'eating'    => $eatingNum,
+                            'placement' => $placement
+                        ]);
+                    }
+
+                    if ($recipe && $recipe->id) {
+                        $disabled[] = $recipe->id;
+                    }
+
+                    $nutrition[$hour] = [
+                        'nutrient'  => $recipe->nutrient->name,
+                        'name'      => /*$eating . ' | ' . */$recipe->name,
+                        'quantity'  => $recipe->getQuantity($target),
+                        'season'    => $recipe->season,
+                        'snack'     => $recipe->snack,
+                        'eating'    => $recipe->eating,
+                        'placement' => $recipe->placement
+                    ];
+                }
+            } else {
+                $nutrition = glossary('definition.detoxification', 'body');
+            }
+
+            $schedule[$dayNum] = [
+                'day' => $day,
+                'type' => $type,
+                'workout' => $workoutTime,
+                'nutrition' => $nutrition
+            ];
+        }
+
+        return $schedule;
+    }
+
+    /**
+     * @return mixed
+     */
+    private function loadScheduler()
+    {
+        return app('LoadScheduler')->driver($this->record->target->slug);
+    }
+
+    /**
+     * @return mixed
+     */
+    private function restScheduler()
+    {
+        return app('RestScheduler')->driver($this->record->target->slug);
+    }
+
+    /**
+     * @return array
+     */
+    public function getWeekDays()
+    {
+        return $this->weekDays;
+    }
+
+    /**
+     * @param $record
+     * @return $this
+     */
+    public function setRecord($record)
+    {
+        $this->record = $record;
+
+        return $this;
+    }
+}
+============================================================

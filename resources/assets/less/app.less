@@ -1,0 +1,386 @@
+/* RESET CSS */
+*
+{
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+body
+{
+  font-family: "Lato-Bold", "Lato-Light", "Lato-Regular", Arial, "Lucida Grande", sans-serif;
+}
+ul
+{
+  list-style: none;
+}
+a
+{
+  text-decoration: none;
+  color: #006EC8;
+}
+a img
+{
+  border: none;
+}
+table
+{
+  border-collapse: collapse;
+}
+.clear:after
+{
+  content: ".";
+  display: block;
+  height: 0;
+  font-size: 0;
+  clear: both;
+  visibility: hidden;
+}
+.clearfix::after {
+  clear: both;
+  display: block;
+  content: " ";
+  height: 0px;
+  visibility: hidden;
+}
+.clear
+{
+  min-height: 1px;
+}
+input,
+select,
+textarea
+{
+  font-size: 0.9em;
+  line-height: 1.53em;
+}
+/* END RESET */
+
+.md-toolbar-tools h1 {
+  font-size: inherit;
+  font-weight: inherit;
+  margin: inherit;
+}
+
+.md-autocomplete-suggestions li {
+  height: 70px !important;
+  margin-left: 0;
+  padding-left: 0;
+}
+
+.login, .search {
+  position: relative;
+  top: 15%;
+
+  .logo {
+    margin-top: 20px;
+    margin-bottom: 60px;
+  }
+
+  .btn-add-customer {
+    position: relative;
+    top: -33px;
+  }
+}
+
+#header {
+  display: none;
+  width: 100%;
+  height: 250px;
+  /*background: url('/images/bg-promo.jpg') center 15% no-repeat;*/
+  background: #639;
+  /*background: #FF4440;*/
+
+  .x-left {
+    position: relative;
+
+    .customer-name {
+      position: absolute;
+      top: 80px;
+      margin-left: 30px;
+
+      h3 {
+        color: white;
+      }
+    }
+  }
+
+  .logo {
+    margin-top: 30px;
+    margin-left: 30px;
+    display: block;
+  }
+
+  .user-name {
+    margin-left: 30px;
+  }
+}
+
+.image-placeholder {
+  width: 180px;
+  height: 180px;
+  overflow: hidden;
+  border: 1px solid #ccc;
+  text-align: center;
+  display: table;
+
+  background: url('/images/add_user.png') center center no-repeat;
+
+  input[type=file] {
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  &.has-image input[type=file] {
+    opacity: 1;
+  }
+}
+
+.customer-image {
+  text-align: center;
+  overflow: hidden;
+
+  img {
+    width: 180px;
+    height: 180px;
+  }
+}
+
+.department-list {
+  display: block;
+  max-width: 100%;
+}
+
+.department-list .department {
+  width: 150px !important;
+  height: 80px;
+}
+
+.schedule .weekday {
+  position: relative;
+  top: 13px;
+}
+
+.schedule .time-icon {
+  padding-top: 15px;
+}
+
+.schedule md-select {
+  padding-bottom: 5px;
+  padding-top: 7px;
+  margin-left: 5px;
+}
+
+nav {
+  ul {
+    li {
+      list-style: none;
+    }
+  }
+}
+
+/*******************************
+ ************ FIXES ************
+ *******************************/
+
+.form-select {
+  margin-top: -3px;
+}
+
+.select-label {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.54);
+  top: 6px;
+  position: relative;
+}
+
+/*******************************
+ ********** HELPERS ************
+ *******************************/
+
+[ng\:cloak], [ng-cloak], [data-ng-cloak], [x-ng-cloak], .ng-cloak, .x-ng-cloak {
+  display: none !important;
+}
+
+.shadow {
+  box-shadow: 0 0 8px rgba(0, 0, 0, .8);
+  -webkit-box-shadow: 0 0 8px rgba(0, 0, 0, .8);
+  -moz-box-shadow: 0 0 8px rgba(0, 0, 0, .8);
+}
+
+.circular {
+  border-radius: 50%;
+  -webkit-border-radius: 50%;
+  -moz-border-radius: 50%;
+}
+
+.bordered {
+  border: 1px solid #DD1144;
+}
+
+a.measurement-thumbnail {
+  cursor: pointer;
+  display: inline-block;
+  position: relative;
+  width: 146px;
+  height: auto;
+  overflow: hidden;
+  margin: 5px;
+
+  &:hover {
+    span {
+      display: none;
+      //background-color: rgba(80, 80, 80, 0);
+    }
+  }
+
+  img {
+    position: relative;
+    display: block;
+    height: 100%;
+    width: auto;
+  }
+
+  span {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 100%;
+    color: #DD1144;
+    background-color: rgba(250, 250, 250, 0.7);
+  }
+}
+
+.color-red, .md-headline, .required {
+  color: #DD1144 !important;
+}
+
+.gender-btn {
+  padding: 10px 30px;
+}
+
+/** Radio buttons & Checkboxes colors */
+md-radio-button.md-checked .md-off {
+  border-color: #DD1144 !important;
+}
+
+md-radio-button .md-on,
+md-checkbox.md-checked .md-icon {
+  background-color: #DD1144 !important;
+}
+
+md-tabs.no-tab-data {
+  md-tabs-canvas {
+    display: none;
+  }
+}
+
+/**
+ * footer & header
+ */
+.clear:after {
+  content: ".";
+  display: block;
+  height: 0;
+  font-size: 0;
+  clear: both;
+  visibility: hidden;
+}
+
+.clear {
+  min-height: 1px;
+}
+
+.wrap_947 {
+  width: 947px;
+  margin: 0 auto;
+}
+
+.topLogo {
+  padding-top: 27px;
+  padding-bottom: 20px;
+}
+
+.topLogo a {
+  margin: 0 auto;
+  display: block;
+  width: 216px;
+  height: 74px;
+}
+
+.lineMenu {
+  background-image: url(/landing/img/lineLogo.png);
+  background-repeat: no-repeat;
+  background-position: center;
+  height: 41px;
+}
+
+.line {
+  height: 40px;
+  display: block;
+  font-size: 0.7em;
+  line-height: 4em;
+  background: rgb(216, 29, 82); /* Old browsers */
+  background: -moz-linear-gradient(top, rgba(216, 29, 82, 1) 0%, rgba(218, 29, 83, 1) 100%); /* FF3.6-15 */
+  background: -webkit-linear-gradient(top, rgba(216, 29, 82, 1) 0%, rgba(218, 29, 83, 1) 100%); /* Chrome10-25,Safari5.1-6 */
+  background: linear-gradient(to bottom, rgba(216, 29, 82, 1) 0%, rgba(218, 29, 83, 1) 100%); /* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
+  filter: progid:DXImageTransform.Microsoft.gradient(startColorstr='#d81d52', endColorstr='#da1d53', GradientType=0); /* IE6-9 */
+}
+
+.titleTxt {
+  text-transform: uppercase;
+  text-align: center;
+  font-size: 1.9em;
+}
+
+.contactLink {
+  padding: 20px 0;
+  font-size: 1.2em;
+
+  ul {
+    margin: 0;
+    padding: 0;
+
+    li {
+      width: 50%;
+      float: left;
+      color: #000;
+
+      a {
+        color: #000;
+      }
+    }
+  }
+
+  .links li {
+    width: 33.3%;
+  }
+}
+
+.contactLink p {
+  display: block;
+  width: 165px;
+  float: right;
+}
+
+.contactLink a:hover {
+  color: #da1d52;
+}
+
+.btn-middle {
+  margin-right:0;
+  margin-left:0;
+  border-radius: 0;
+}
+
+.btn-left {
+  margin-right:0;
+  border-radius: 10px 0 0 10px;
+}
+
+.btn-right {
+  margin-left:0;
+  border-radius: 0 10px 10px 0;
+}
