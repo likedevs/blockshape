@@ -1,0 +1,381 @@
+html {
+    color: #000;
+    background: #FFF;
+}
+
+body, div, dl, dt, dd, h1, h2, h3, h4, h5, h6,
+pre, code, form, fieldset, legend, input, textarea, p, blockquote, th, td {
+    margin: 0;
+    padding: 0;
+}
+
+ul, ol {
+    margin: 0 0 0 20px;
+    padding:0;
+}
+
+table {
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+
+fieldset, img {
+    border: 0;
+}
+
+span.signs {
+    position: relative;
+}
+span.signs img.signature {
+    position: absolute;
+    top: -60px;
+    left: 20px;
+}
+
+img.stamp {
+    position: absolute;
+    left:650px;
+}
+
+address, caption,
+cite, code, dfn, em, strong, th, var {
+    font-style: normal;
+    font-weight: normal;
+}
+
+li {
+    list-style: none;
+}
+
+caption, th {
+    text-align: left;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-size: 100%;
+    font-weight: normal;
+}
+
+q:before, q:after {
+    content: '';
+}
+
+abbr, acronym {
+    border: 0;
+    font-variant: normal;
+}
+
+sup {
+    vertical-align: text-top;
+}
+
+sub {
+    vertical-align: text-bottom;
+}
+
+input, textarea,
+select {
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+}
+
+input, textarea,
+select {
+    *font-size: 100%;
+}
+
+legend {
+    color: #000;
+}
+
+/* Your Base Foundation */
+html, body {
+    /*font-family: sans-serif;*/
+    font-size: 11pt;
+    width: 768px;
+}
+
+h1, h2, h3, h4, h5, h6, p {
+    margin:10px auto;
+}
+p {
+    text-indent: 20px;
+}
+h1 {
+    font-size: 15pt;
+}
+
+h2 {
+    font-size: 14pt;
+}
+
+h3 {
+    font-size: 13pt;
+}
+
+h4 {
+    font-size: 12pt;
+}
+
+strong {
+    font-weight: 900 !important;
+}
+
+hr {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    height: 1px;
+    color: #000;
+    background-color: #000;
+}
+
+#content p {
+    font-size: 11pt;
+    color: black;
+}
+
+#content ul, li {
+    display: block;
+    page-break-inside: avoid;
+}
+
+#header {
+    text-align: center;
+    /*background-color: #EE505F;*/
+    margin-bottom: 10px;
+}
+
+.headline {
+    text-align: center;
+    text-transform: uppercase;
+}
+
+h3.headline {
+    font-weight: bold;
+}
+
+.table {
+    width: 100%;
+    border: 1px solid #000;
+    border-collapse: collapse;
+}
+
+.table.labs {
+    border: none;
+}
+
+.table.labs td {
+    border: none;
+    border-collapse: collapse;
+    padding: 10px;
+    font-size: 13px;
+}
+
+.unbreakable {
+    page-break-before: avoid;
+    page-break-after: avoid;
+    page-break-inside: avoid;
+}
+
+.table th {
+    font-weight: bold;
+    text-align: center;
+}
+
+.table th,
+.table td {
+    border: 1px solid #000;
+    text-align: center;
+    vertical-align: middle;
+    font-size: 11pt;
+}
+
+.table.no-border,
+.table.no-border td {
+    border: none;
+}
+
+.table td {
+    padding: 2px;
+}
+
+ul.simple > li {
+    list-style: none;
+}
+
+ol {
+    counter-reset: item
+}
+
+ol > li {
+    display: block
+}
+
+ol > li:before {
+    content: counters(item, ".") ") ";
+    counter-increment: item
+}
+
+.ml-0 {
+    margin-left: 0;
+}
+
+.ml-10 {
+    margin-left: 10px;
+}
+
+.ml-20 {
+    margin-left: 20px;
+}
+
+.mr-0 {
+    margin-right: 0;
+}
+
+.mr-10 {
+    margin-right: 10px;
+}
+
+.pl-0 {
+    padding-left: 0;
+}
+
+.pl-10 {
+    padding-left: 10px;
+}
+
+/* block width */
+.w-15 {
+    min-width: 15px;
+    width: auto;
+}
+
+.w-20 {
+    min-width: 20px;
+    width: auto;
+}
+
+.w-50 {
+    min-width: 50px;
+    width: auto;
+}
+
+.w-100 {
+    min-width: 100px;
+    width: auto;
+}
+
+.w-200 {
+    min-width: 200px;
+    width: auto;
+}
+
+.w-300 {
+    min-width: 300pt;
+    width: auto;
+}
+
+.w-350 {
+    min-width: 350px;
+    width: auto;
+}
+
+.w-400 {
+    min-width: 400px;
+    width: auto;
+}
+
+.w-500 {
+    min-width: 500px;
+    width: auto;
+}
+
+.w-600 {
+    min-width: 600px;
+    width: auto;
+}
+
+.w-700 {
+    min-width: 700px;
+    width: auto;
+}
+
+.h-50 {
+    height: 50px;
+}
+
+.block {
+    display: block;
+}
+
+.i-block {
+    display: inline-block;
+}
+
+.border {
+    border: 1px solid #ccc;
+}
+
+/* text-style */
+.divider {
+    width: 100%;
+    border: none;
+    border-bottom-style: dashed;
+    border-bottom-width: 2px;
+}
+
+.underlined-box {
+    border-bottom: 1px solid #000;
+}
+
+.underlined {
+    text-decoration: underline;
+}
+
+.bold {
+    font-weight: bold;
+}
+
+.italic {
+    font-style: italic;
+}
+
+/* text-align */
+.a-left {
+    text-align: left !important;
+}
+
+.a-center {
+    text-align: center !important;
+}
+
+.v-center {
+    vertical-align: middle;
+}
+
+.a-right {
+    text-align: right !important;
+}
+
+.page {
+    /*page-break-after: always;*/
+    border: 1px solid #ED145B;
+    margin: 10px auto;
+}
+
+.page-break {
+    page-break-after: always;
+}
+
+.outline {
+    margin: 50px auto;
+    text-align: center;
+}
+
+.clearfix {
+    float: none;
+    clear: both;
+    height: 1px;
+}

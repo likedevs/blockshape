@@ -1,0 +1,313 @@
+@media (max-width: 992px) {
+	.top-line{
+		height: auto;
+		padding-bottom: 10px;
+	}
+	.top-line .socials{
+		text-align: center;
+		padding-top: 10px;
+	}
+	.top-line .search{
+		width: 50%;
+		float: left;
+		text-align: center;
+	}
+	.top-line .top-menu{
+		width: 50%;
+		float: left;
+		text-align: center;
+	}
+	.header{
+		height: auto;
+	}
+	.header .logo{
+		width: 200px;
+		margin: 15px auto;
+	}
+	.header  .menu-btns{
+		overflow: hidden;
+		width: 250px;
+		margin: 5px auto;
+	}
+	.header .menu-btns .account-btn{
+		margin-left: 0;
+		float: left;
+		margin-right: 20px;
+	}
+	.header .menu-btns .cart-btn{
+		float: left;
+	}
+	.banner .banner-circle .banner-circle-inside h2{
+		font-size: 14px;
+	}
+	.banner .banner-circle{
+		width: 300px;
+		height: 300px;
+	}
+	.banner .banner-circle .banner-circle-inside .btns a{
+		width: 80%;
+	}
+	.footer .other{
+		text-align: center;
+	}
+	.footer .other a{
+		margin: 0 auto;
+	}
+	.bottom-line{
+		text-align: center;
+	}
+	.bottom-line p{
+		text-align: center;
+		margin-top: 10px;
+	}
+	.banner-abonaments .deals{
+		position: static;
+		text-align: center;
+	}
+	.banner-abonaments .deals .deal img{
+		width: auto;
+		max-width: 300px;
+		margin: 10px auto;
+		text-align: center;
+	}
+	.banner-abonaments .deals .deal a{
+		width: 55%;
+		font-size: 13px;
+		margin-left: -22%;
+	}
+	.tabs-block{
+		background-size: auto 100%;
+		padding-bottom: 20px;
+	}
+	.tabs-block .greeting{
+		min-height: auto;
+	}
+	.tabs-block .greeting h2{
+		position: static;
+	}
+	.tabs-block .valid .date{
+		float: none;
+	}
+	.tabs-block .avatar img{
+		margin-top: 10px;
+		max-width: 400px;
+	}
+	.prefooter img{
+		max-height: 500px;
+	}
+	.account-base .regime .name{
+		text-align: center;
+	}
+}
+@media (max-width: 700px) {
+	.wrapper{
+		overflow: hidden;
+		width: 100%;
+	}
+	.header .menu ul{
+		background-color: #FFF;
+		padding: 10px;
+		width: 100%;
+	}
+	.header .menu ul li{
+		display: block;
+		text-align: center;
+	}
+	.top-line .search{
+		width: 270px;
+		float: none;
+		margin: 10px auto;
+	}
+	.top-line .top-menu{
+		width: 100%;
+	}
+	.banner .banner-circle{
+		position: static;
+		margin: 10px auto;
+		border: 1px solid;
+	}
+	.offerts .offerts-header p{
+		padding: 20px;
+		font-size: 14px;
+	}
+	.offerts .offerts-header{
+		padding-bottom: 50px;
+		min-height: auto;
+	}
+	.abon-content .info .deal-btn{
+		position: static;
+		margin: 10px auto;
+		width: 100%;
+		padding: 0;
+	}
+	.abon-content .info{
+		margin-top: 20px;
+		padding: 5px;
+	}
+	.button-center a{
+		width: 100%;
+		font-size: 12px;
+	}
+	.abon-content{
+		background-image: none;
+	}
+	.conditions{
+		width: 100%;
+		margin-top: 20px;
+	}
+	.conditions p{
+		padding: 10%;
+		font-size: 14px;
+	}
+	.abon-options p{
+		height: auto;
+		border: none;
+	}
+	.tabs-block .tabs ul li{
+		width: 50%;
+	}
+	.tabs-block .tabs .tab-line{
+		display: none;
+	}
+	.account-base .videos-area .item .inside{
+		height: auto;
+		margin-bottom: 10px;
+	}
+	.account-base{
+		background-image: none;
+	}
+	.calendar .calendar-img{
+		width: 100%;
+	}
+	.calendar .periods .item{
+		text-align: left;
+		margin-bottom: 10px;
+	}
+	.footer-line{
+		font-size: 14px;
+		line-height: 1.5;
+	}
+	.cart-table .heading{
+		display: none;
+	}
+	.cart-table .row .price{
+		width: 100%;
+		display: block;
+		text-align: center;
+		margin-left: 0;
+	}
+	.events .green{
+		background-image: none;
+		background-color: #99c126;
+		padding: 10px 0;
+	}
+	.events .silver{
+		background-color: #edeeee;
+	}
+	.events .green img{
+		width: 100%;
+	}
+	.params-form .form input{
+		margin-bottom: 10px;
+	}
+	.char-area .char .char-tabs a{
+		width: 50%;
+		background-repeat: no-repeat;
+		float: left;
+		font-size: 13px;
+	}
+	.params-form .form{
+		padding: 30px 10px;
+	}
+	.login-form{
+		width: 290px;
+		margin-left: -145px;
+		position: static;
+		margin-left: 0;
+		margin-top: 0;
+	}
+	.login-form .form-area input[type="submit"]{
+		font-size: 12px;
+	}
+	.account-inside{
+		padding-top: 20px;
+	}
+	.account-inside h3.red{
+		margin-top: 20px;
+	}
+	.payment .accept-cards{
+		background-size: 100%;
+	}
+	.projects-list img{
+		width: 100%;
+	}
+	.projects-block{
+		background-position: center 90px;
+	}
+	.archive-content .content p{
+		font-size: 13px;
+	}
+	.project-content h2{
+		font-size: 13px;
+		margin-top: 50px;
+	}
+	.project-content .projects-list .item .inside{
+		padding: 20px;
+	}
+	.search-area .number{
+		text-align: center;
+		margin-bottom: 10px;
+	}
+	.search-form{
+		width: 300px;
+		padding: 10px 10px;
+		padding-bottom: 50px;
+		position: relative;
+		left: 0;
+		margin: 10px auto;
+		background-size: 99% 99%;
+		border-radius: 5px;
+	}
+	.search-form input[type="text"]{
+		background-size: 100% 100%;
+		background-position: -20px 47px;
+		color: #000;
+	}
+	.search-form input[type="submit"]{
+		top: 10px;
+		right: 10px;
+		height: 45px;
+	}
+	.search-form span{
+		color: #000;
+		left: 10px;
+		font-size: 12px;
+	}
+	.search-area .article h4{
+		text-align: center;
+	}
+	.search-area .article a{
+		text-align: center;
+	}
+	.history-block{
+		background-image: none;
+	}
+	.history-block .sliders{
+		margin-top: 20px;
+	}
+	.histories{
+		margin-bottom: 20px;
+	}
+	.archive-content{
+		background-image: none;
+	}
+	.archive-content .over-content{
+		margin-top: 20px;
+	}
+	.videos-block .videos{
+		background-color: #99c126;
+	}
+	.videos-block .videos{
+		min-height: auto;
+	}
+}
